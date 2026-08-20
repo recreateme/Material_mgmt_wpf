@@ -1,0 +1,6 @@
+﻿<Window x:Class="MaterialMgmt.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="原料管理系统 v4.0"
+        Height="700" Width="1200">
+</Window>
