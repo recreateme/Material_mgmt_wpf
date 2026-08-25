@@ -19,11 +19,11 @@ public partial class LoginWindow : Window
     {
         _auth = auth;
         Title = "原料管理系统 — 登录";
-        Width = 440;
-        Height = 520;
+        Width = 460;
+        Height = 540;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ResizeMode = ResizeMode.NoResize;
-        Background = new LinearGradientBrush(UiTheme.BannerStart, Color.FromRgb(0x0F, 0x17, 0x2A), 90);
+        Background = Brushes.Transparent;
         BuildUi();
     }
 
@@ -34,18 +34,35 @@ public partial class LoginWindow : Window
 
     private void BuildUi()
     {
+        var root = new Grid();
+
+        // 全屏背景：深蓝渐变 + 细网格纹路，减少与卡片的生硬对比
+        root.Children.Add(new Border { Background = CreateBackdropBrush() });
+        root.Children.Add(new Border
+        {
+            Background = CreateGridPatternBrush(),
+            Opacity = 0.22
+        });
+        root.Children.Add(new Border
+        {
+            Background = CreateDiagonalHatchBrush(),
+            Opacity = 0.12
+        });
+
         var card = new Border
         {
             Width = 360,
-            Margin = new Thickness(0, 40, 0, 40),
-            Padding = new Thickness(28, 28, 28, 24),
-            Background = Brushes.White,
+            Margin = new Thickness(0, 36, 0, 36),
+            Padding = new Thickness(28, 28, 28, 28),
+            Background = new SolidColorBrush(Color.FromArgb(0xF2, 0xF8, 0xFA, 0xFC)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(14),
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
             Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
-                BlurRadius = 24, ShadowDepth = 4, Opacity = 0.25, Color = Colors.Black
+                BlurRadius = 28, ShadowDepth = 2, Opacity = 0.35, Color = Colors.Black
             }
         };
 
@@ -69,9 +86,9 @@ public partial class LoginWindow : Window
 
         stack.Children.Add(FieldLabel("登录入口"));
         _portal = new ComboBox { Margin = new Thickness(0, 4, 0, 14), Height = 34 };
-        _portal.Items.Add("管理员");
         _portal.Items.Add("操作员");
-        _portal.SelectedIndex = 0;
+        _portal.Items.Add("管理员");
+        _portal.SelectedIndex = 0; // 默认操作员优先
         stack.Children.Add(_portal);
 
         stack.Children.Add(FieldLabel("用户名"));
@@ -100,18 +117,48 @@ public partial class LoginWindow : Window
         btn.Click += (_, _) => DoLogin();
         stack.Children.Add(btn);
 
-        stack.Children.Add(new TextBlock
-        {
-            Text = "root 账号可任选入口登录",
-            FontSize = 11,
-            Foreground = UiTheme.Brush(UiTheme.Muted),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 14, 0, 0)
-        });
-
         card.Child = stack;
-        Content = card;
+        root.Children.Add(card);
+        Content = root;
         Loaded += (_, _) => _user.Focus();
+    }
+
+    private static LinearGradientBrush CreateBackdropBrush()
+    {
+        var brush = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 1) };
+        brush.GradientStops.Add(new GradientStop(Color.FromRgb(0x0F, 0x17, 0x2A), 0));
+        brush.GradientStops.Add(new GradientStop(UiTheme.BannerStart, 0.45));
+        brush.GradientStops.Add(new GradientStop(Color.FromRgb(0x1E, 0x3A, 0x5F), 1));
+        return brush;
+    }
+
+    private static DrawingBrush CreateGridPatternBrush()
+    {
+        var pen = new Pen(new SolidColorBrush(Color.FromArgb(0x50, 0x94, 0xA3, 0xB8)), 1);
+        var group = new DrawingGroup();
+        group.Children.Add(new GeometryDrawing(null, pen, new LineGeometry(new Point(0, 0), new Point(0, 24))));
+        group.Children.Add(new GeometryDrawing(null, pen, new LineGeometry(new Point(0, 0), new Point(24, 0))));
+        return new DrawingBrush(group)
+        {
+            TileMode = TileMode.Tile,
+            Viewport = new Rect(0, 0, 24, 24),
+            ViewportUnits = BrushMappingMode.Absolute,
+            Stretch = Stretch.None
+        };
+    }
+
+    private static DrawingBrush CreateDiagonalHatchBrush()
+    {
+        var pen = new Pen(new SolidColorBrush(Color.FromArgb(0x40, 0xE2, 0xE8, 0xF0)), 1.2);
+        var group = new DrawingGroup();
+        group.Children.Add(new GeometryDrawing(null, pen, new LineGeometry(new Point(0, 32), new Point(32, 0))));
+        return new DrawingBrush(group)
+        {
+            TileMode = TileMode.Tile,
+            Viewport = new Rect(0, 0, 32, 32),
+            ViewportUnits = BrushMappingMode.Absolute,
+            Stretch = Stretch.None
+        };
     }
 
     private static TextBlock FieldLabel(string text) => new()
@@ -123,7 +170,7 @@ public partial class LoginWindow : Window
     };
 
     private string SelectedPortalRole() =>
-        _portal.SelectedIndex == 0 ? Roles.Admin : Roles.Operator;
+        _portal.SelectedIndex == 0 ? Roles.Operator : Roles.Admin;
 
     private void DoLogin()
     {

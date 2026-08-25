@@ -56,7 +56,8 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
         _grid.Columns.Add(GridKit.Text("配方", "Item.FormulaName", 180));
         _grid.Columns.Add(GridKit.Text("生产编号", "Item.ProductionNo", 140));
         _grid.Columns.Add(GridKit.Text("状态", "Item.StatusCn", 90));
-        _grid.Columns.Add(GridKit.Text("开始", "Item.StartTime", 160, "yyyy-MM-dd HH:mm"));
+        _grid.Columns.Add(GridKit.Text("开始时间", "Item.StartTimeDisplay", 150));
+        _grid.Columns.Add(GridKit.Text("结束时间", "Item.EndTimeDisplay", 150));
 
         _pager.PageChanged += Render;
         DockPanel.SetDock(_pager, Dock.Bottom);
@@ -74,7 +75,8 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
             .Where(w => w.OperatorId == uid)
             .OrderByDescending(w => w.Id)
             .AsEnumerable()
-            .Select(w => new Row(w.Id, w.FormulaId, $"{w.Formula.Code} {w.Formula.Name}", w.ProductionNo, OrderRules.ToDisplay(w.Status), w.StartTime, w.Status))
+            .Select(w => new Row(w.Id, w.FormulaId, $"{w.Formula.Code} {w.Formula.Name}", w.ProductionNo,
+                OrderRules.ToDisplay(w.Status), w.StartTime, w.EndTime, w.Status))
             .ToList();
         _pager.Reset();
         Render();
@@ -174,7 +176,13 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
 
     private List<int> CheckedOrderIds() => SelectedRows().Select(x => x.Id).ToList();
 
-    private sealed record Row(int Id, int FormulaId, string FormulaName, string? ProductionNo, string StatusCn, DateTime StartTime, string Status);
+    private sealed record Row(
+        int Id, int FormulaId, string FormulaName, string? ProductionNo,
+        string StatusCn, DateTime StartTime, DateTime? EndTime, string Status)
+    {
+        public string StartTimeDisplay => StartTime.ToString("yyyy-MM-dd HH:mm");
+        public string EndTimeDisplay => EndTime?.ToString("yyyy-MM-dd HH:mm") ?? "—";
+    }
 }
 
 public sealed class AdminHistoryPanel : UserControl, IPageLifecycle
@@ -221,7 +229,8 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle
         _grid.Columns.Add(GridKit.Text("操作员", "Item.Operator", 110));
         _grid.Columns.Add(GridKit.Text("生产编号", "Item.ProductionNo", 140));
         _grid.Columns.Add(GridKit.Text("状态", "Item.StatusCn", 90));
-        _grid.Columns.Add(GridKit.Text("开始", "Item.StartTime", 160, "yyyy-MM-dd HH:mm"));
+        _grid.Columns.Add(GridKit.Text("开始时间", "Item.StartTimeDisplay", 150));
+        _grid.Columns.Add(GridKit.Text("结束时间", "Item.EndTimeDisplay", 150));
 
         _pager.PageChanged += ApplyFilter;
         DockPanel.SetDock(_pager, Dock.Bottom);
@@ -235,7 +244,8 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle
     {
         using var db = _dbFactory.CreateDbContext();
         _all = db.WorkOrders.Include(w => w.Formula).OrderByDescending(w => w.Id).AsEnumerable()
-            .Select(w => new Row(w.Id, $"{w.Formula.Code} {w.Formula.Name}", w.Operator, w.ProductionNo, OrderRules.ToDisplay(w.Status), w.StartTime))
+            .Select(w => new Row(w.Id, $"{w.Formula.Code} {w.Formula.Name}", w.Operator, w.ProductionNo,
+                OrderRules.ToDisplay(w.Status), w.StartTime, w.EndTime))
             .ToList();
         ApplyFilter();
     }
@@ -341,5 +351,11 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle
         return list.Select(x => x.Id).ToList();
     }
 
-    private sealed record Row(int Id, string FormulaName, string Operator, string? ProductionNo, string StatusCn, DateTime StartTime);
+    private sealed record Row(
+        int Id, string FormulaName, string Operator, string? ProductionNo,
+        string StatusCn, DateTime StartTime, DateTime? EndTime)
+    {
+        public string StartTimeDisplay => StartTime.ToString("yyyy-MM-dd HH:mm");
+        public string EndTimeDisplay => EndTime?.ToString("yyyy-MM-dd HH:mm") ?? "—";
+    }
 }
