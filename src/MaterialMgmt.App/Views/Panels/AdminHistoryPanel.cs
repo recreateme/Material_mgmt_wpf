@@ -185,7 +185,7 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
     }
 }
 
-public sealed class AdminHistoryPanel : UserControl, IPageLifecycle
+public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
     private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
     private readonly IAuthService _auth;
@@ -207,6 +207,9 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle
     }
 
     public void OnShow() => Refresh();
+
+    public void OnBarcode(string code, bool simulated = false)
+        => BarcodeFillHelper.FillFilter(_filter, code);
 
     private void Build()
     {

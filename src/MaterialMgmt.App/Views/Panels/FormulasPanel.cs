@@ -11,29 +11,38 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MaterialMgmt.App.Views.Panels;
 
-public sealed class FormulasPanel : UserControl, IPageLifecycle
+public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
     private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
     private readonly IAuthService _auth;
     private readonly IAuditLog _audit;
     private readonly NavigationService _nav;
+    private readonly DeviceHub _devices;
     private readonly DataGrid _grid = new();
     private readonly TextBox _filter = new() { Width = 200, Height = 30, Margin = new Thickness(0, 0, 8, 0) };
     private readonly PaginationBar _pager = new(10);
     private List<Formula> _all = new();
     private List<Formula> _filtered = new();
+    private bool _createDialogOpen;
 
     public FormulasPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth,
-        IAuditLog audit, NavigationService nav)
+        IAuditLog audit, NavigationService nav, DeviceHub devices)
     {
         _dbFactory = dbFactory;
         _auth = auth;
         _audit = audit;
         _nav = nav;
+        _devices = devices;
         Build();
     }
 
     public void OnShow() => Refresh();
+
+    public void OnBarcode(string code, bool simulated = false)
+    {
+        if (_createDialogOpen) return;
+        BarcodeFillHelper.FillFilter(_filter, code);
+    }
 
     private void Build()
     {
@@ -161,7 +170,10 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle
         };
         stack.Children.Add(ok);
         dlg.Content = stack;
-        dlg.ShowDialog();
+        BarcodeFillHelper.AttachDialog(dlg, _devices, manual, codeBox);
+        _createDialogOpen = true;
+        try { dlg.ShowDialog(); }
+        finally { _createDialogOpen = false; }
     }
 
     private void ToggleActive()

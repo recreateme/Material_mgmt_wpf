@@ -11,26 +11,36 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MaterialMgmt.App.Views.Panels;
 
-public sealed class MaterialsPanel : UserControl, IPageLifecycle
+public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
     private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
     private readonly IAuthService _auth;
     private readonly IAuditLog _audit;
+    private readonly DeviceHub _devices;
     private readonly DataGrid _grid = new();
     private readonly TextBox _filter = new() { Width = 220, Height = 30, Margin = new Thickness(0, 0, 8, 0) };
     private readonly PaginationBar _pager = new(10);
     private List<Material> _all = new();
     private List<Material> _filtered = new();
+    private bool _editDialogOpen;
 
-    public MaterialsPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth, IAuditLog audit)
+    public MaterialsPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth, IAuditLog audit,
+        DeviceHub devices)
     {
         _dbFactory = dbFactory;
         _auth = auth;
         _audit = audit;
+        _devices = devices;
         Build();
     }
 
     public void OnShow() => Refresh();
+
+    public void OnBarcode(string code, bool simulated = false)
+    {
+        if (_editDialogOpen) return;
+        BarcodeFillHelper.FillFilter(_filter, code);
+    }
 
     private void Build()
     {
@@ -99,12 +109,20 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle
 
     private void Edit(Material? existing)
     {
-        var dlg = new MaterialEditDialog(_dbFactory, existing) { Owner = Window.GetWindow(this) };
-        if (dlg.ShowDialog() == true)
+        var dlg = new MaterialEditDialog(_dbFactory, _devices, existing) { Owner = Window.GetWindow(this) };
+        _editDialogOpen = true;
+        try
         {
-            _audit.Log("material", existing is null ? $"新增材料 {dlg.SavedCode}" : $"编辑材料 {dlg.SavedCode}",
-                _auth.CurrentUser?.Username ?? "");
-            Refresh();
+            if (dlg.ShowDialog() == true)
+            {
+                _audit.Log("material", existing is null ? $"新增材料 {dlg.SavedCode}" : $"编辑材料 {dlg.SavedCode}",
+                    _auth.CurrentUser?.Username ?? "");
+                Refresh();
+            }
+        }
+        finally
+        {
+            _editDialogOpen = false;
         }
     }
 
@@ -149,7 +167,7 @@ internal sealed class MaterialEditDialog : Window
     private readonly TextBox _code = new() { Height = 30, Margin = new Thickness(0, 4, 0, 10), IsEnabled = false };
     public string SavedCode { get; private set; } = "";
 
-    public MaterialEditDialog(IDbContextFactory<MaterialMgmtDbContext> dbFactory, Material? existing)
+    public MaterialEditDialog(IDbContextFactory<MaterialMgmtDbContext> dbFactory, DeviceHub devices, Material? existing)
     {
         _dbFactory = dbFactory;
         _existing = existing;
@@ -186,7 +204,7 @@ internal sealed class MaterialEditDialog : Window
         stack.Children.Add(new TextBlock { Text = "描述" });
         stack.Children.Add(_desc);
         stack.Children.Add(_manual);
-        stack.Children.Add(new TextBlock { Text = "编码" });
+        stack.Children.Add(new TextBlock { Text = "编码（可扫码填入）" });
         stack.Children.Add(_code);
         var save = UiTheme.PrimaryButton("保存");
         save.Height = 34;
@@ -194,6 +212,8 @@ internal sealed class MaterialEditDialog : Window
         save.Click += (_, _) => Save();
         stack.Children.Add(save);
         Content = stack;
+
+        BarcodeFillHelper.AttachDialog(this, devices, _manual, _code);
     }
 
     private void Save()
