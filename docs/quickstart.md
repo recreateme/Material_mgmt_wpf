@@ -91,7 +91,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 | 电子秤未连接 | 插线、确认驱动、看状态栏；设置页刷新端口 |
 | 扫码无反应 | 确认已保存扫码 COM；关闭串口助手避免占口 |
 | 扫码缺字 | 枪改为 USB COM，勿用键盘楔入模式 |
-| 手工编码保存失败 | 检查编码是否重复；长度与格式（字母数字 -_.） |
+| 手工编码保存失败 | 检查编码是否重复；长度 1～64，勿含空格 |
 | 数据丢失 | 确认打开的是含 `data\` 的完整文件夹，不要只拷 exe |
 
 更完整说明见 [DEPLOY.md](../DEPLOY.md)、[TECH.md](TECH.md)；WPF 代码讲解见 [wpf-tutorial.md](wpf-tutorial.md)。

@@ -18,6 +18,19 @@ public class CodeServiceTests
     }
 
     [Fact]
+    public void Validate_AllowsBarcodeWithParentheses()
+    {
+        var code = CodeService.AssertUnique(Array.Empty<string>(), "WH-814(20260303)");
+        Assert.Equal("WH-814(20260303)", code);
+    }
+
+    [Fact]
+    public void Validate_RejectsWhitespace()
+    {
+        Assert.Throws<CodeError>(() => CodeService.ValidateFormat("MAT 001"));
+    }
+
+    [Fact]
     public void AssertUnique_DetectsDuplicate()
     {
         Assert.Throws<CodeError>(() =>

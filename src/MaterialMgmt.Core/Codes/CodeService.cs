@@ -6,7 +6,8 @@ namespace MaterialMgmt.Core.Codes;
 /// <summary>业务唯一码生成与校验（对齐 Python code_service）。</summary>
 public static class CodeService
 {
-    private static readonly Regex CodeRe = new(@"^[A-Z0-9][A-Z0-9\-_.]{2,63}$", RegexOptions.Compiled);
+    // 允许现场条码常见字符（含括号等），禁止空白与控制符
+    private static readonly Regex CodeRe = new(@"^[^\s\x00-\x1F]{1,64}$", RegexOptions.Compiled);
 
     public static string Prefix(CodeKind kind) => kind switch
     {
@@ -22,7 +23,7 @@ public static class CodeService
         var c = Normalize(code);
         if (string.IsNullOrEmpty(c)) throw new CodeError("编码不能为空");
         if (c.Length > 64) throw new CodeError("编码最长 64 个字符");
-        if (!CodeRe.IsMatch(c)) throw new CodeError("编码仅允许字母、数字、-、_、.，且至少 3 位");
+        if (!CodeRe.IsMatch(c)) throw new CodeError("编码不能为空格，长度 1～64，可使用字母、数字及常见符号（如 - _ . ( )）");
     }
 
     public static string FormatAutoCode(CodeKind kind, int entityId)
