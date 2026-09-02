@@ -188,6 +188,7 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
         db.SaveChanges();
         _audit.Log("formula", $"{(entity.IsActive ? "启用" : "停用")}配方 {entity.Code}", _auth.CurrentUser?.Username ?? "");
         Refresh();
+        UiFeedback.Success($"配方 {entity.Code} 已{(entity.IsActive ? "启用" : "停用")}。");
     }
 
     private void DeleteSelected()
@@ -211,6 +212,7 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
         }
         db.SaveChanges();
         Refresh();
+        UiFeedback.Success($"已删除 {list.Count} 个配方。");
     }
 
     private static string ResolveCreateCode(MaterialMgmtDbContext db, bool isManual, string manualInput)

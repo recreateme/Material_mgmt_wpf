@@ -18,6 +18,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle
     private readonly TextBlock _title = new() { FontSize = 18, FontWeight = FontWeights.Bold };
     private readonly DataGrid _grid = new();
     private int _formulaId;
+    private string _formulaCode = "";
     private List<FormulaItem> _items = new();
     private List<Material> _materials = new();
 
@@ -45,9 +46,12 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle
     private void Build()
     {
         var root = new DockPanel { Margin = new Thickness(20) };
-        var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
-        DockPanel.SetDock(bar, Dock.Top);
-        var back = new Button { Content = "← 返回", Height = 30, Margin = new Thickness(0, 0, 12, 0) };
+
+        var header = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+        DockPanel.SetDock(header, Dock.Top);
+
+        var bar = new StackPanel { Orientation = Orientation.Horizontal };
+        var back = UiTheme.GhostButton("← 返回列表");
         back.Click += (_, _) => _nav.Navigate(AppPage.Formulas);
         bar.Children.Add(back);
         bar.Children.Add(_title);
@@ -63,9 +67,21 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle
         var del = UiTheme.DangerButton("删除步骤");
         del.Click += (_, _) => DeleteStep();
         bar.Children.Add(del);
-        var save = UiTheme.PrimaryButton("保存顺序");
-        save.Click += (_, _) => SaveOrder();
-        bar.Children.Add(save);
+        var saveOrder = UiTheme.GhostButton("保存顺序");
+        saveOrder.Click += (_, _) => SaveOrder();
+        bar.Children.Add(saveOrder);
+        var finish = UiTheme.PrimaryButton("完成");
+        finish.Click += (_, _) => Complete();
+        bar.Children.Add(finish);
+
+        header.Children.Add(bar);
+        header.Children.Add(new TextBlock
+        {
+            Text = "请添加称量步骤并设置上下限；调整顺序后点「保存顺序」。全部完成后点「完成」返回配方列表。",
+            Foreground = UiTheme.Brush(UiTheme.Muted),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 8, 0, 0)
+        });
 
         _grid.AutoGenerateColumns = false;
         _grid.IsReadOnly = true;
@@ -77,7 +93,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle
         _grid.Columns.Add(new DataGridTextColumn { Header = "备注", Binding = new System.Windows.Data.Binding("Notes"), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         _grid.MouseDoubleClick += (_, _) => { if (_grid.SelectedItem is FormulaItem it) EditStep(it); };
 
-        root.Children.Add(bar);
+        root.Children.Add(header);
         root.Children.Add(_grid);
         Content = root;
     }
@@ -88,6 +104,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle
         var f = db.Formulas.Include(x => x.Items).ThenInclude(i => i.Material)
             .FirstOrDefault(x => x.Id == _formulaId);
         if (f is null) return;
+        _formulaCode = f.Code;
         _title.Text = $"编辑配方：{f.Code}  {f.Name}";
         _materials = db.Materials.OrderBy(m => m.Code).ToList();
         _items = f.Items.OrderBy(i => i.Sequence).ToList();
@@ -181,11 +198,12 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle
         db.FormulaItems.Remove(e);
         db.SaveChanges();
         Reload();
-        SaveOrder();
+        SaveOrder(silent: true);
     }
 
-    private void SaveOrder()
+    private void SaveOrder(bool silent = false)
     {
+        if (_items.Count == 0) return;
         using var db = _dbFactory.CreateDbContext();
         for (var i = 0; i < _items.Count; i++)
         {
@@ -194,6 +212,21 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle
         }
         db.SaveChanges();
         Reload();
+        if (!silent)
+            UiFeedback.Success("步骤顺序已保存。");
     }
 
+    private void Complete()
+    {
+        if (_items.Count == 0)
+        {
+            UiFeedback.Warn("请至少添加一个称量步骤后再完成。");
+            return;
+        }
+
+        SaveOrder(silent: true);
+        _audit.Log("formula", $"完成配方编辑 {_formulaCode}", _auth.CurrentUser?.Username ?? "");
+        UiFeedback.Success($"配方 {_formulaCode} 已保存，共 {_items.Count} 个步骤。", "配方编辑完成");
+        _nav.Navigate(AppPage.Formulas);
+    }
 }

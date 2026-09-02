@@ -156,6 +156,7 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
         u.IsActive = !u.IsActive; u.UpdatedAt = DateTime.Now; db.SaveChanges();
         _audit.Log("user", $"{(u.IsActive ? "启用" : "禁用")}用户 {u.Username}", actor.Username);
         Refresh();
+        UiFeedback.Success($"用户 {u.Username} 已{(u.IsActive ? "启用" : "禁用")}。");
     }
 
     private void Delete()
@@ -187,6 +188,7 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
                 RemoveUsers(db, free, actor.Username);
                 db.SaveChanges();
                 Refresh();
+                UiFeedback.Success($"已删除 {free.Count} 个用户。");
                 return;
             }
 
@@ -211,10 +213,12 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
                 }
                 db.SaveChanges();
                 Refresh();
+                UiFeedback.Success(linked.Count > 0 && free.Count == 0
+                    ? "已按选择处理关联用户（禁用或删除）。"
+                    : "用户状态已更新。");
                 return;
             }
 
-            // UnlinkAndDelete：保留工单与 Operator 文本，清空 OperatorId 后删账号
             foreach (var (row, _) in linked)
             {
                 foreach (var wo in db.WorkOrders.Where(w => w.OperatorId == row.Id))
@@ -223,6 +227,7 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
             RemoveUsers(db, linked.Select(x => x.Row).Concat(free).ToList(), actor.Username);
             db.SaveChanges();
             Refresh();
+            UiFeedback.Success("已解除工单关联并删除所选用户。");
         }
         catch (DbUpdateException)
         {
