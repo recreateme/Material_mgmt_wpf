@@ -1,17 +1,20 @@
 # 原料管理系统 — WPF 重构实施计划
 
-> **说明（2026-08）：** 本文为重构期总纲与历史记录，阶段任务已完成。  
-> 日常开发请优先阅读 [README.md](README.md)、[docs/quickstart.md](docs/quickstart.md)、[docs/wpf-tutorial.md](docs/wpf-tutorial.md)。  
+> **说明（2026-09 更新）：** 本文为重构期总纲与**历史归档**。阶段任务已于 2026-08 完成；v4.1 起扫码枪支持 USB COM 串口。  
+> **日常开发请阅读：** [README.md](README.md)、[docs/PROJECT.md](docs/PROJECT.md)、[docs/TECH.md](docs/TECH.md)、[docs/quickstart.md](docs/quickstart.md)。  
 > **请勿删除本文件**：运行时 `AppPaths` 用文件名 `WPF重构计划.md` 定位仓库根目录。
 
 | 项 | 内容 |
 |----|------|
-| 文档版本 | v1.0（计划） / 实现状态见 README |
+| 文档版本 | v1.0（计划，已归档） / 实现状态见 README |
 | 编写日期 | 2026-08-19 |
-| 源项目 | `D:\工作记录\3-AI应用课题\3厂原料管理\material-mgmt-desktop`（PyQt6 v3.0） |
-| 重构目标目录 | `D:\Develop\Material_Mgmt` |
+| 源项目 | PyQt6 v3.0 原料管理桌面端 |
+| 当前仓库 | `Material_Mgmt_wpf`（本目录） |
 | 目标技术 | **WPF**（.NET 8 / Windows） |
 | 硬性约束 | **现有业务模块必须全部保留**；兼容现有 SQLite 库与现场数据迁移 |
+
+<details>
+<summary><strong>历史归档：重构计划全文（点击展开）</strong></summary>
 
 ---
 
@@ -562,3 +565,5 @@ App (WPF)
 ---
 
 *本文档为实施总纲；具体接口命名与类图可在阶段 0/1 细化，但不得缩减 §2 所列模块范围。*
+
+</details>

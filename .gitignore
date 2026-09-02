@@ -1,29 +1,35 @@
-## Build
+# .NET / Visual Studio
 **/bin/
 **/obj/
 **/.vs/
 *.user
 *.suo
+*.cache
+*.log
 
-## Publish / package
+# Publish output
 /dist/
 /_wpf_publish/
 
-## Python
+# Local app data (runtime)
+/data/
+/logs/
+*.db
+*.db-wal
+*.db-shm
+
+# Local machine config (use config/settings.example.ini as template)
+/config/settings.ini
+
+# Python tools (optional dev scripts)
 **/__pycache__/
 *.pyc
 .venv/
 *.egg-info/
 
-## App data
-/data/
-/corrections/
-/sahi_output/
-/outputs/
-/logs/
-/build/
-/build_staging/
-
-## Local secrets / machine paths — keep example only if needed
-# app_config.json may contain absolute yolo paths; review before commit
-# Prefer committing app_config.deploy.json as the machine template
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+*~

@@ -13,7 +13,7 @@
 
 ## 2. 方式 A：运行打包版
 
-1. 打开目录：`D:\Develop\Material_Mgmt\dist\原料管理系统`
+1. 打开目录：`dist\原料管理系统`（仓库根目录下）
 2. 双击 `原料管理系统.exe`
 3. 选择登录入口：
    - **管理员** → 维护原材料 / 配方 / 用户 / 工单历史
@@ -31,9 +31,15 @@
 ## 3. 方式 B：源码运行
 
 ```powershell
-cd D:\Develop\Material_Mgmt\src
+cd src
 dotnet restore
 dotnet run --project MaterialMgmt.App
+```
+
+首次运行请复制配置模板：
+
+```powershell
+copy config\settings.example.ini config\settings.ini
 ```
 
 开发时数据库默认在仓库根目录：`data\material_mgmt.db`（通过 `WPF重构计划.md` 定位根路径）。
@@ -62,15 +68,16 @@ dotnet run --project MaterialMgmt.App
 ## 6. 系统设置（可选）
 
 - **电子天平**：一般登录后自动连接；也可手动选 COM 口 → 保存并连接  
-- **扫码枪**：USB HID，在本页点击后扫描可测试；可「模拟扫码」  
+- **扫码枪**：推荐 **USB COM**；选扫码 COM、模式「自动」或「仅串口」→ 保存；可「硬件自检」与「模拟扫码」  
 - **修改密码**
 
-配置文件：`config\settings.ini`（打包版在 exe 同级 `config\`）。
+配置文件：`config\settings.ini`（模板见 `config\settings.example.ini`）。
 
 ## 7. 重新打包（保留现有库）
 
+在仓库根目录：
+
 ```powershell
-cd D:\Develop\Material_Mgmt
 powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 ```
 
@@ -80,10 +87,11 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 
 | 现象 | 处理 |
 |------|------|
-| 登录后窗口立刻退出 | 已修复；请用最新包。仍异常看 `logs\app.log` |
+| 登录后窗口立刻退出 | 看 `logs\app.log` |
 | 电子秤未连接 | 插线、确认驱动、看状态栏；设置页刷新端口 |
-| 扫码无反应 | 焦点在程序窗口；条码长度 ≥ 4 并以回车结束 |
+| 扫码无反应 | 确认已保存扫码 COM；关闭串口助手避免占口 |
+| 扫码缺字 | 枪改为 USB COM，勿用键盘楔入模式 |
 | 手工编码保存失败 | 检查编码是否重复；长度与格式（字母数字 -_.） |
 | 数据丢失 | 确认打开的是含 `data\` 的完整文件夹，不要只拷 exe |
 
-更完整部署说明见 [DEPLOY.md](../DEPLOY.md)；WPF 代码讲解见 [wpf-tutorial.md](wpf-tutorial.md)。
+更完整说明见 [DEPLOY.md](../DEPLOY.md)、[TECH.md](TECH.md)；WPF 代码讲解见 [wpf-tutorial.md](wpf-tutorial.md)。

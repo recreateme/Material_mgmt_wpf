@@ -11,10 +11,11 @@ public class DbSmokeTests
     [Fact]
     public async Task Can_Initialize_And_Read_Users()
     {
+        // 从测试输出目录向上查找含 WPF重构计划.md 的仓库根
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        // Prefer repo root containing data/
-        if (!Directory.Exists(Path.Combine(root, "data")))
-            root = @"D:\Develop\Material_Mgmt";
+        var sentinel = Path.Combine(root, "WPF重构计划.md");
+        if (!File.Exists(sentinel))
+            throw new InvalidOperationException($"未找到仓库根目录（缺少 {sentinel}）");
 
         var services = new ServiceCollection();
         services.AddLogging();

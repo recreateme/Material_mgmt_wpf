@@ -1,4 +1,4 @@
-# 功能对照检查表（WPF v4.0）
+# 功能对照检查表（WPF v4.1）
 
 对照源项目 PyQt6 v3.0。勾选表示已在 WPF 侧落地可演示。
 
@@ -47,5 +47,5 @@
 - [x] 发布自包含脚本 `tools/publish.ps1`（保留库与配置）+ `DEPLOY.md`
 - [x] 表格分页条（PaginationBar）
 - [x] UI 主题（AppTheme + UiTheme 按钮工厂）
-- [x] 文档：README / Quickstart / WPF 教程
+- [x] 文档：README / Quickstart / PROJECT / TECH / WPF 教程
 - [ ] 现场硬件联调签字 → 见 [hardware-checklist.md](hardware-checklist.md)

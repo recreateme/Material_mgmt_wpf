@@ -1,14 +1,14 @@
 # 原料管理系统 WPF — 完整打包脚本
 # 产物目录：dist\原料管理系统\
-# 压缩包：  dist\原料管理系统-v4.0-win-x64.zip
+# 压缩包：  dist\原料管理系统-v4.1.0-win-x64.zip
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 if (-not (Test-Path (Join-Path $Root "src\MaterialMgmt.sln"))) {
-    $Root = "D:\Develop\Material_Mgmt"
+    throw "未找到解决方案，请在仓库根目录执行（含 src\MaterialMgmt.sln）"
 }
 
-$Version = "4.0.0"
+$Version = "4.1.0"
 $Proj    = Join-Path $Root "src\MaterialMgmt.App\MaterialMgmt.App.csproj"
 $Out     = Join-Path $Root "dist\原料管理系统"
 $Zip     = Join-Path $Root "dist\原料管理系统-v$Version-win-x64.zip"
@@ -80,15 +80,25 @@ foreach ($d in @("data", "config", "logs", "docs")) {
 Write-Host "[3/5] 写入配置与数据库 ..."
 $ini = Join-Path $Out "config\settings.ini"
 $bakIni = Join-Path $BackupDir "settings.ini"
+$exampleIni = Join-Path $Root "config\settings.example.ini"
 if (Test-Path -LiteralPath $bakIni) {
     Copy-Item -LiteralPath $bakIni -Destination $ini -Force
     Write-Host "  已恢复现有 config\settings.ini（来源: $preservedIni）"
+} elseif (Test-Path -LiteralPath $exampleIni) {
+    Copy-Item -LiteralPath $exampleIni -Destination $ini -Force
+    Write-Host "  已从 settings.example.ini 生成默认 config\settings.ini"
 } else {
 @"
 [serial]
 port = 
 baud_rate = 9600
 auto_connect = true
+
+[scanner]
+port = 
+baud_rate = 9600
+mode = Auto
+enabled = true
 
 [app]
 window_width = 1280
@@ -121,7 +131,10 @@ $docs = @(
     @{ Src = "docs\quickstart.md"; Dst = "docs\quickstart.md" },
     @{ Src = "docs\wpf-tutorial.md"; Dst = "docs\wpf-tutorial.md" },
     @{ Src = "docs\hardware-checklist.md"; Dst = "docs\hardware-checklist.md" },
-    @{ Src = "docs\feature-checklist.md"; Dst = "docs\feature-checklist.md" }
+    @{ Src = "docs\feature-checklist.md"; Dst = "docs\feature-checklist.md" },
+    @{ Src = "docs\PROJECT.md"; Dst = "docs\PROJECT.md" },
+    @{ Src = "docs\TECH.md"; Dst = "docs\TECH.md" },
+    @{ Src = "config\settings.example.ini"; Dst = "docs\settings.example.ini" }
 )
 foreach ($d in $docs) {
     $from = Join-Path $Root $d.Src
@@ -155,14 +168,12 @@ $readme = @"
 
 【硬件】
   电子天平：系统设置中选择 COM 口 → 保存并连接
-  扫码枪：USB HID 键盘模式，在设置页可测试扫码
+  扫码枪：推荐 USB COM（9600, CR）；与电子秤使用不同 COM
+  详见 docs\TECH.md 与 docs\hardware-checklist.md
 
 【迁移旧数据】
   退出程序后，将旧版 data\material_mgmt.db 覆盖到本目录 data\ 下。
   详见 docs\DEPLOY.md
-
-【联调检查】
-  docs\hardware-checklist.md
 
 打包时间：$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 "@

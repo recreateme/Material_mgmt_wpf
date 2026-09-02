@@ -1,4 +1,4 @@
-# 部署与数据迁移说明（WPF v4.0）
+# 部署与数据迁移说明（WPF v4.1）
 
 上手操作请先看 [docs/quickstart.md](docs/quickstart.md)。
 
@@ -11,7 +11,7 @@
 ├── data/
 │   └── material_mgmt.db      ← 业务库（SQLite）
 ├── config/
-│   └── settings.ini          ← 串口、窗口几何、自动连接
+│   └── settings.ini          ← 串口、扫码、窗口几何
 ├── logs/
 │   ├── app.log
 │   └── audit.log
@@ -21,8 +21,9 @@
 
 ## 2. 开发机发布
 
+在仓库根目录执行：
+
 ```powershell
-cd D:\Develop\Material_Mgmt
 powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 ```
 
@@ -31,14 +32,15 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 - 自包含 `win-x64`，目标机**无需安装 .NET**
 - **自动备份并恢复**现有 `dist\...\data\material_mgmt.db`（含 wal/shm）
 - **自动备份并恢复**现有 `config\settings.ini`
-- 产物：`dist\原料管理系统\` 与 `dist\原料管理系统-v4.0.0-win-x64.zip`
+- 产物：`dist\原料管理系统\` 与 `dist\原料管理系统-v4.1.0-win-x64.zip`
 
 ## 3. 目标机部署
 
 1. 复制**整个**「原料管理系统」文件夹（或解压 zip）
-2. 双击 `原料管理系统.exe`
-3. 空库会写种子账号；若已带 `data\material_mgmt.db` 则沿用原账号
-4. 登录后会**自动识别并连接电子秤**；失败时可到「系统设置」手动选 COM
+2. 若无 `config\settings.ini`，从 `docs` 或仓库模板复制 `settings.example.ini` 并重命名
+3. 双击 `原料管理系统.exe`
+4. 空库会写种子账号；若已带 `data\material_mgmt.db` 则沿用原账号
+5. 登录后**自动识别电子秤**；在「系统设置」为**扫码枪**单独选 COM（勿与秤同口）
 
 ## 4. 从 PyQt v3.0 迁移数据
 
@@ -70,8 +72,13 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 **Q：电子秤未自动连接？**  
 检查线缆与驱动；看状态栏提示；设置页「刷新端口」后保存。登录后会周期重试识别。
 
+**Q：扫码无反应或缺字？**  
+扫码枪建议设为 **USB COM**（9600, CR 后缀）；在设置页配置扫码 COM 并保存。勿与电子秤共用 COM。
+
 **Q：打包后数据/串口配置丢了？**  
 使用仓库内最新 `tools\publish.ps1`（会保留 dist 内库与 ini）。打包前请先退出正在运行的程序。
 
 **Q：能否只拷 exe？**  
 不能。请整夹或 zip 分发。
+
+更多硬件联调见 [docs/hardware-checklist.md](docs/hardware-checklist.md)、[docs/TECH.md](docs/TECH.md)。
