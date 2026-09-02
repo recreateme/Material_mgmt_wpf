@@ -29,7 +29,7 @@
 - [x] 工单恢复 Resume
 - [x] 取消工单
 - [x] 天平 ScaleWorker（协议对齐）+ 自动探测 / 重连
-- [x] 扫码 BarcodeInputService
+- [x] 扫码 BarcodeInputService（HID）+ BarcodeSerialService（USB COM）
 
 ## 历史与导出
 
@@ -40,7 +40,7 @@
 ## 其它
 
 - [x] 首页统计与快捷入口
-- [x] 系统设置（串口/扫码模拟/改密）
+- [x] 系统设置（秤/扫码 COM、模式、硬件自检、模拟扫码、改密）
 - [x] 审计日志 audit.log
 - [x] 种子账号仅空库
 - [x] formula_erp_bindings 表保留、UI 隐藏

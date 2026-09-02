@@ -20,6 +20,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IConfigService, ConfigService>();
         services.AddSingleton<IAuditLog, AuditLogService>();
         services.AddSingleton<BarcodeInputService>();
+        services.AddSingleton<BarcodeSerialService>();
 
         services.AddDbContextFactory<MaterialMgmtDbContext>(opt =>
             opt.UseSqlite($"Data Source={paths.DatabasePath}"));

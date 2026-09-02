@@ -64,7 +64,7 @@ public partial class MainWindow : Window
         Closed += async (_, _) =>
         {
             _deviceTimer.Stop();
-            _devices.DisconnectScale();
+            _devices.Dispose();
             var (w, h) = ((int)ActualWidth, (int)ActualHeight);
             if (w > 100 && h > 100)
                 _config.SaveWindowSize(w, h, WindowState == WindowState.Maximized);
@@ -79,7 +79,7 @@ public partial class MainWindow : Window
         RebuildNav(user);
         _nav.Navigate(AppPage.Home);
 
-        // 登录后主动识别并连接电子秤（无需手动「保存并连接」）
+        // 登录后：电子秤自动识别 + 扫码枪按配置连接
         _devices.BeginAutoConnectAfterLogin(_config);
         UpdateDeviceUi();
     }
@@ -225,6 +225,7 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (!_devices.ShouldAcceptHidKeys) return;
         var text = e.Key == Key.Enter || e.Key == Key.Return ? null : KeyToText(e);
         _devices.Barcode.OnKey(e.Key is Key.Enter or Key.Return, text);
     }
@@ -263,10 +264,23 @@ public partial class MainWindow : Window
                     ? "● 电子秤：未连接"
                     : $"● 电子秤：未连接 — {_devices.ScaleLastError}";
         _scaleDot.Foreground = UiTheme.Brush(_devices.IsScaleConnected ? UiTheme.Success : UiTheme.Danger);
-        _scanDot.Text = _devices.IsScannerListening
-            ? (string.IsNullOrEmpty(_devices.LastScanCode) ? "● 扫码枪：监听中" : $"● 扫码：{_devices.LastScanCode}")
-            : "● 扫码枪：空闲";
-        _scanDot.Foreground = UiTheme.Brush(_devices.IsScannerListening ? UiTheme.Success : UiTheme.Warning);
+        var scanLabel = _devices.ScannerSourceLabel;
+        if (!string.IsNullOrEmpty(_devices.LastScanCode) && _devices.IsScannerListening)
+            _scanDot.Text = $"● 扫码：{_devices.LastScanCode}（{scanLabel}）";
+        else if (_devices.IsScannerSerialConnected)
+            _scanDot.Text = $"● 扫码枪：已连接（{scanLabel}）";
+        else if (!string.IsNullOrEmpty(_devices.ScannerLastError))
+            _scanDot.Text = $"● 扫码枪：{_devices.ScannerLastError}";
+        else
+            _scanDot.Text = _devices.IsScannerListening
+                ? $"● 扫码枪：监听中（{scanLabel}）"
+                : $"● 扫码枪：空闲（{scanLabel}）";
+        var scanOk = _devices.IsScannerSerialConnected
+                     || scanLabel.Contains("HID", StringComparison.Ordinal)
+                     || scanLabel.Contains("关闭", StringComparison.Ordinal);
+        _scanDot.Foreground = UiTheme.Brush(scanOk && string.IsNullOrEmpty(_devices.ScannerLastError)
+            ? UiTheme.Success
+            : UiTheme.Warning);
     }
 
     private void DoLogout()

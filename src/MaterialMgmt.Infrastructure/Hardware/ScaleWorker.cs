@@ -199,9 +199,20 @@ public sealed class ScaleWorker : IDisposable
     }
 
     /// <summary>按优先端口顺序扫描，返回第一个可识别为天平的 COM 口。</summary>
-    public static string? FindScalePort(int baudRate = 9600, IEnumerable<string>? preferFirst = null)
+    public static string? FindScalePort(
+        int baudRate = 9600,
+        IEnumerable<string>? preferFirst = null,
+        IEnumerable<string>? excludePorts = null)
     {
-        var available = ListPorts().ToList();
+        var exclude = new HashSet<string>(
+            (excludePorts ?? Array.Empty<string>())
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Select(p => p.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+
+        var available = ListPorts()
+            .Where(p => !exclude.Contains(p))
+            .ToList();
         if (available.Count == 0) return null;
 
         var ordered = new List<string>();

@@ -87,4 +87,26 @@ public class WorkflowEngineTests
         Assert.Equal(WeighState.WaitingScan, eng.State);
         Assert.Equal("MAT-000002", eng.CurrentItem!.Material.Code);
     }
+
+    [Fact]
+    public void Rescan_DuringWeighing_AllowsCorrection()
+    {
+        var eng = new WorkflowEngine(new[] { Item(1, "MAT-000001", "A", 1.0, 2.0, 1) }, 10);
+        Assert.Equal(WeighState.Weighing, eng.OnBarcode("MAT-000001").State);
+        eng.OnWeightUpdate(1.5, true);
+        Assert.Equal(WeighState.WeightOk, eng.State);
+
+        var bad = eng.OnBarcode("MAT-999999");
+        Assert.True(bad.IsError);
+        Assert.Equal(WeighState.WaitingScan, eng.State);
+
+        Assert.Equal(WeighState.Weighing, eng.OnBarcode("MAT-000001").State);
+    }
+
+    [Fact]
+    public void Barcode_TrimsWhitespace()
+    {
+        var eng = new WorkflowEngine(new[] { Item(1, "MAT-000001", "A", 1, 2, 1) }, 10);
+        Assert.Equal(WeighState.Weighing, eng.OnBarcode("  MAT-000001  ").State);
+    }
 }

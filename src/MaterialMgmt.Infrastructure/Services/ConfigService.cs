@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using MaterialMgmt.Core.Abstractions;
+using MaterialMgmt.Core.Hardware;
 
 namespace MaterialMgmt.Infrastructure.Services;
 
@@ -30,6 +31,44 @@ public sealed class ConfigService : IConfigService
     {
         get => bool.TryParse(Get("serial", "auto_connect", "true"), out var v) && v;
         set { Set("serial", "auto_connect", value ? "true" : "false"); Save(); }
+    }
+
+    public string ScannerPort
+    {
+        get => Get("scanner", "port", "");
+        set { Set("scanner", "port", value); Save(); }
+    }
+
+    public int ScannerBaud
+    {
+        get => int.TryParse(Get("scanner", "baud_rate", "9600"), out var v) ? v : 9600;
+        set
+        {
+            Set("scanner", "baud_rate", value.ToString(CultureInfo.InvariantCulture));
+            Save();
+        }
+    }
+
+    public ScannerInputMode ScannerMode
+    {
+        get => Enum.TryParse<ScannerInputMode>(Get("scanner", "mode", "Auto"), true, out var m)
+            ? m
+            : ScannerInputMode.Auto;
+        set
+        {
+            Set("scanner", "mode", value.ToString());
+            Save();
+        }
+    }
+
+    public bool ScannerEnabled
+    {
+        get => !bool.TryParse(Get("scanner", "enabled", "true"), out var v) || v;
+        set
+        {
+            Set("scanner", "enabled", value ? "true" : "false");
+            Save();
+        }
     }
 
     public (int Width, int Height) WindowSize
@@ -65,6 +104,10 @@ public sealed class ConfigService : IConfigService
         Set("serial", "port", "");
         Set("serial", "baud_rate", "9600");
         Set("serial", "auto_connect", "true");
+        Set("scanner", "port", "");
+        Set("scanner", "baud_rate", "9600");
+        Set("scanner", "mode", "Auto");
+        Set("scanner", "enabled", "true");
         Set("app", "window_width", "1280");
         Set("app", "window_height", "800");
         Set("app", "window_maximized", "false");

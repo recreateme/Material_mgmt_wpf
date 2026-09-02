@@ -58,25 +58,37 @@ public sealed class WorkflowEngine
 
     public StepStatus OnBarcode(string code)
     {
+        // 称重过程中允许重扫纠错：回到等待扫码再比对
+        if (State is WeighState.Weighing or WeighState.OutOfRange or WeighState.WeightOk)
+        {
+            _scannedCode = "";
+            _hasEffectiveWeight = false;
+            _lastWeight = 0;
+            State = WeighState.WaitingScan;
+        }
+
         if (State != WeighState.WaitingScan || CurrentItem is null)
             return new StepStatus(State, "");
 
-        var expected = CurrentItem.Material.Code.Trim().ToUpperInvariant();
-        if (!string.Equals(code.Trim(), expected, StringComparison.OrdinalIgnoreCase))
+        var scanned = NormalizeBarcode(code);
+        var expected = NormalizeBarcode(CurrentItem.Material.Code);
+        if (!string.Equals(scanned, expected, StringComparison.OrdinalIgnoreCase))
         {
             return new StepStatus(
                 WeighState.WaitingScan,
-                $"原料错误：当前步骤不匹配\n应扫：{expected}（{CurrentItem.Material.Name}）\n实扫：{code}",
+                $"原料错误：当前步骤不匹配\n应扫：{CurrentItem.Material.Code}（{CurrentItem.Material.Name}）\n实扫：{code.Trim()}",
                 IsError: true);
         }
 
-        _scannedCode = code.Trim();
+        _scannedCode = scanned;
         _hasEffectiveWeight = false;
         State = WeighState.Weighing;
         return new StepStatus(
             WeighState.Weighing,
             $"请将原料放上秤盘\n目标范围：{CurrentItem.WeightMin} ~ {CurrentItem.WeightMax} g\n读数稳定且合格后，点击确认或按空格键");
     }
+
+    public static string NormalizeBarcode(string code) => (code ?? "").Trim();
 
     public StepStatus OnWeightUpdate(double weight, bool isStable)
     {
