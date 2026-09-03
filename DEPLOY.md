@@ -61,7 +61,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 | 用户名 | 密码 | 角色 |
 |--------|------|------|
 | root | root666 | 开发人员 |
-| admin | 88888888 | 管理人员（李园涛） |
+| admin | 88888888 | 管理人员 |
 | operator | operator123 | 实验人员 |
 
 ## 7. 常见问题

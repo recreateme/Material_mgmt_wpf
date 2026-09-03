@@ -163,7 +163,7 @@ $readme = @"
 
 【默认账号】（仅空库首次启动写入）
   root / root666       开发人员
-  admin / 88888888     管理人员（李园涛）
+  admin / 88888888     管理人员
   operator / operator123  实验人员
 
 【硬件】

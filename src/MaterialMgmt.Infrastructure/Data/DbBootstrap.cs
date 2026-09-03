@@ -167,7 +167,7 @@ public sealed class DbBootstrap
             var seeds = new (string U, string Pw, string Display, string Role)[]
             {
                 ("root", "root666", "开发人员", Roles.Root),
-                ("admin", "88888888", "李园涛", Roles.Admin),
+                ("admin", "88888888", "管理人员", Roles.Admin),
                 ("operator", "operator123", "实验人员", Roles.Operator),
                 ("王瑶", "88888888", "王瑶", Roles.Operator),
             };
@@ -193,7 +193,7 @@ public sealed class DbBootstrap
         // 非首次：仅同步已存在业务账号的角色/显示名
         var business = new (string U, string Display, string Role)[]
         {
-            ("admin", "李园涛", Roles.Admin),
+            ("admin", "管理人员", Roles.Admin),
             ("王瑶", "王瑶", Roles.Operator),
         };
         foreach (var (u, display, role) in business)
@@ -219,8 +219,9 @@ public sealed class DbBootstrap
             db.Users.Remove(admin);
 
         legacy.Username = "admin";
-        if (string.IsNullOrWhiteSpace(legacy.DisplayName) || legacy.DisplayName == "李园涛")
-            legacy.DisplayName = "李园涛";
+        if (string.IsNullOrWhiteSpace(legacy.DisplayName) ||
+            legacy.DisplayName is "李园涛" or "管理人员")
+            legacy.DisplayName = "管理人员";
         legacy.Role = Roles.Admin;
         legacy.IsActive = true;
         _logger.LogInformation("已将账号「李园涛」重命名为 admin（密码未改）");
