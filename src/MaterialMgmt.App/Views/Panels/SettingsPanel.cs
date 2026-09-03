@@ -141,6 +141,18 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
         };
         root.Children.Add(pw);
 
+        root.Children.Add(new TextBlock
+        {
+            Text = "关于", FontWeight = FontWeights.SemiBold, FontSize = 15, Margin = new Thickness(0, 24, 0, 8)
+        });
+        root.Children.Add(new TextBlock
+        {
+            Text = $"{AppInfo.WindowTitle}\n构建时间：{AppInfo.BuildDateDisplay}\n运行时：.NET {Environment.Version}",
+            Foreground = UiTheme.Brush(UiTheme.Muted),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+
         Content = new ScrollViewer { Content = root };
     }
 

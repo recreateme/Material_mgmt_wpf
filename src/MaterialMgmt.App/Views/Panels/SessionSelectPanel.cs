@@ -80,7 +80,11 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
 
     private void Start()
     {
-        if (_formulas.SelectedItem is not FormulaOption opt) return;
+        if (_formulas.SelectedItem is not FormulaOption opt)
+        {
+            MessageBox.Show("请先选择配方", "提示");
+            return;
+        }
         using (var db = _dbFactory.CreateDbContext())
         {
             if (!db.FormulaItems.Any(i => i.FormulaId == opt.Id))

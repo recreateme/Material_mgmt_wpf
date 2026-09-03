@@ -153,6 +153,7 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
             _audit.Log("material", $"删除材料 {entity.Code}", _auth.CurrentUser?.Username ?? "");
         }
         db.SaveChanges();
+        UiFeedback.Success($"已删除 {selected.Count} 条原材料。");
         Refresh();
     }
 }

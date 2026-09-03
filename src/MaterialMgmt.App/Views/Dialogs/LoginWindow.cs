@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using MaterialMgmt.App.Services;
 using MaterialMgmt.App.Themes;
 using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Auth;
@@ -77,7 +78,7 @@ public partial class LoginWindow : Window
         });
         stack.Children.Add(new TextBlock
         {
-            Text = "实验室称量 · WPF v4.0",
+            Text = $"实验室称量 · WPF {AppInfo.DisplayVersion}",
             FontSize = 12,
             Foreground = UiTheme.Brush(UiTheme.Muted),
             HorizontalAlignment = HorizontalAlignment.Center,

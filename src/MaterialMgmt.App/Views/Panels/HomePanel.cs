@@ -57,7 +57,7 @@ public sealed class HomePanel : UserControl, IPageLifecycle
                 },
                 new TextBlock
                 {
-                    Text = $"角色：{RoleLabels.ToDisplay(user.Role)}  ·  原料管理系统 WPF v4.0",
+                    Text = $"角色：{RoleLabels.ToDisplay(user.Role)}  ·  原料管理系统 WPF {AppInfo.DisplayVersion}",
                     Foreground = new SolidColorBrush(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF)),
                     Margin = new Thickness(0, 6, 0, 0)
                 }
@@ -145,12 +145,40 @@ public sealed class HomePanel : UserControl, IPageLifecycle
         if (_deviceRow.Parent is null) return;
         _deviceRow.Children.Clear();
         _deviceRow.Children.Add(DeviceCard("电子天平",
-            _devices.IsScaleConnected ? "已连接" : "未连接",
+            _devices.IsScaleConnected ? $"已连接（{_devices.ConnectedPort}）" : ScaleStatusText(),
             _devices.IsScaleConnected ? UiTheme.Success : UiTheme.Danger));
-        _deviceRow.Children.Add(DeviceCard("扫码枪",
-            _devices.IsScannerListening ? "监听中" : "空闲",
-            _devices.IsScannerListening ? UiTheme.Success : UiTheme.Warning));
+        _deviceRow.Children.Add(DeviceCard("扫码枪", ScannerStatusText(), ScannerStatusColor()));
     }
+
+    private string ScaleStatusText()
+    {
+        if (_devices.IsDiscovering || _devices.ScaleLastError.Contains("识别", StringComparison.Ordinal))
+            return _devices.ScaleLastError;
+        return string.IsNullOrEmpty(_devices.ScaleLastError) ? "未连接" : $"未连接 — {_devices.ScaleLastError}";
+    }
+
+    private string ScannerStatusText()
+    {
+        var label = _devices.ScannerSourceLabel;
+        if (_devices.IsScannerSerialConnected)
+            return $"已连接（{label}）";
+        if (!string.IsNullOrEmpty(_devices.ScannerLastError))
+            return $"{_devices.ScannerLastError}（{label}）";
+        return _devices.IsScannerListening ? $"监听中（{label}）" : $"空闲（{label}）";
+    }
+
+    private static Color ScannerStatusColor(DeviceHub devices)
+    {
+        var label = devices.ScannerSourceLabel;
+        var ok = devices.IsScannerSerialConnected
+                 || label.Contains("HID", StringComparison.Ordinal)
+                 || label.Contains("关闭", StringComparison.Ordinal);
+        if (ok && string.IsNullOrEmpty(devices.ScannerLastError))
+            return UiTheme.Success;
+        return devices.IsScannerListening ? UiTheme.Warning : UiTheme.Danger;
+    }
+
+    private Color ScannerStatusColor() => ScannerStatusColor(_devices);
 
     private static Border DeviceCard(string name, string status, Color color)
     {

@@ -115,6 +115,9 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
                 _audit.Log("order", $"取消工单 #{r.Id}", _auth.CurrentUser?.Username ?? "");
             }
             Refresh();
+            UiFeedback.Success(targets.Count == 1
+                ? $"工单 #{targets[0].Id} 已取消。"
+                : $"已取消 {targets.Count} 条工单。");
         }
         catch (Exception ex) { MessageBox.Show(ex.Message); }
     }
@@ -141,6 +144,7 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
             _orders.DeleteMany(ids, allowCompleted: true);
             _audit.Log("order", $"操作员删除工单 {string.Join(",", ids)}", _auth.CurrentUser?.Username ?? "");
             Refresh();
+            UiFeedback.Success($"已删除 {targets.Count} 条工单。");
         }
         catch (Exception ex) { MessageBox.Show(ex.Message); }
     }

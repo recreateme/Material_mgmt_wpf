@@ -43,7 +43,7 @@ public partial class MainWindow : Window
         _devices = devices;
         _sp = sp;
 
-        Title = "原料管理系统 v4.0";
+        Title = AppInfo.WindowTitle;
         MinWidth = 960;
         MinHeight = 600;
         ApplyGeometry();
@@ -131,7 +131,7 @@ public partial class MainWindow : Window
         });
         header.Children.Add(new TextBlock
         {
-            Text = "v4.0",
+            Text = AppInfo.DisplayVersion,
             Foreground = UiTheme.Brush(UiTheme.NavText),
             FontSize = 11,
             Margin = new Thickness(0, 2, 0, 0)

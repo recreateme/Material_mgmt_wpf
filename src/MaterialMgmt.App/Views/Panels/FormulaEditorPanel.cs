@@ -77,7 +77,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle
         header.Children.Add(bar);
         header.Children.Add(new TextBlock
         {
-            Text = "请添加称量步骤并设置上下限；调整顺序后点「保存顺序」。全部完成后点「完成」返回配方列表。",
+            Text = "请添加称量步骤并设置上下限。调整顺序后点「保存顺序」或「完成」一并保存；全部完成后点「完成」返回配方列表。",
             Foreground = UiTheme.Brush(UiTheme.Muted),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 8, 0, 0)

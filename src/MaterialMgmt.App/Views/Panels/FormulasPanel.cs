@@ -58,8 +58,10 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
         var edit = UiTheme.PrimaryButton("编辑步骤");
         edit.Click += (_, _) =>
         {
-        if (GridKit.Current<Formula>(_grid) is { } row)
+            if (GridKit.Current<Formula>(_grid) is { } row)
                 _nav.Navigate(AppPage.FormulaEditor, v => ((FormulaEditorPanel)v).Load(row.Item.Id));
+            else
+                MessageBox.Show("请先选择一条配方", "提示");
         };
         bar.Children.Add(edit);
         var toggle = UiTheme.GhostButton("启用/停用");
