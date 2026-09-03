@@ -70,14 +70,62 @@ public static class GridKit
         return style;
     }
 
-    public static DataGridTextColumn Text(string header, string path, DataGridLength width, string? format = null)
-        => new()
+    public static DataGridTextColumn Text(string header, string path, DataGridLength width, string? format = null,
+        TextAlignment align = TextAlignment.Center)
+    {
+        var style = align == TextAlignment.Left ? LeftTextStyle : CenteredTextStyle;
+        return new DataGridTextColumn
         {
             Header = header,
             Binding = new Binding(path) { StringFormat = format },
             Width = width,
-            ElementStyle = CenteredTextStyle
+            ElementStyle = style
         };
+    }
+
+    public static DataGridTextColumn Text(string header, string path, double width, string? format = null,
+        TextAlignment align = TextAlignment.Center)
+        => Text(header, path, new DataGridLength(width), format, align);
+
+    public static DataGridTemplateColumn StatusColumn(string header, string statusPath, string labelPath, double width = 96)
+    {
+        var factory = new FrameworkElementFactory(typeof(TextBlock));
+        factory.SetBinding(TextBlock.TextProperty, new Binding(labelPath));
+        factory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        factory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        factory.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
+        factory.SetValue(TextBlock.FontSizeProperty, 12.0);
+        factory.SetBinding(TextBlock.ForegroundProperty, new Binding(statusPath)
+        {
+            Converter = new StatusBrushConverter()
+        });
+        return new DataGridTemplateColumn
+        {
+            Header = header,
+            Width = width,
+            CellTemplate = new DataTemplate { VisualTree = factory }
+        };
+    }
+
+    private static Style LeftTextStyle { get; } = CreateTextStyle(TextAlignment.Left, HorizontalAlignment.Left);
+
+    private static Style CreateTextStyle(TextAlignment textAlign, HorizontalAlignment align)
+    {
+        var style = new Style(typeof(TextBlock));
+        style.Setters.Add(new Setter(FrameworkElement.HorizontalAlignmentProperty, align));
+        style.Setters.Add(new Setter(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center));
+        style.Setters.Add(new Setter(TextBlock.TextAlignmentProperty, textAlign));
+        return style;
+    }
+
+    private sealed class StatusBrushConverter : System.Windows.Data.IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            => UiTheme.Brush(UiTheme.StatusColor(value as string ?? ""));
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            => throw new NotSupportedException();
+    }
 
     public static List<SelectableRow<T>> Wrap<T>(IEnumerable<T> items)
         => items.Select(i => new SelectableRow<T>(i)).ToList();

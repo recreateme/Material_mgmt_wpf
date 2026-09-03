@@ -167,9 +167,8 @@ public sealed class DbBootstrap
             var seeds = new (string U, string Pw, string Display, string Role)[]
             {
                 ("root", "root666", "开发人员", Roles.Root),
-                ("admin", "admin123", "管理人员", Roles.Admin),
+                ("admin", "88888888", "李园涛", Roles.Admin),
                 ("operator", "operator123", "实验人员", Roles.Operator),
-                ("李园涛", "88888888", "李园涛", Roles.Admin),
                 ("王瑶", "88888888", "王瑶", Roles.Operator),
             };
             foreach (var (u, pw, display, role) in seeds)
@@ -189,10 +188,12 @@ public sealed class DbBootstrap
             return;
         }
 
+        await MigrateLegacyAdminAccountAsync(db, ct);
+
         // 非首次：仅同步已存在业务账号的角色/显示名
         var business = new (string U, string Display, string Role)[]
         {
-            ("李园涛", "李园涛", Roles.Admin),
+            ("admin", "李园涛", Roles.Admin),
             ("王瑶", "王瑶", Roles.Operator),
         };
         foreach (var (u, display, role) in business)
@@ -204,6 +205,25 @@ public sealed class DbBootstrap
             if (user.DisplayName != display) { user.DisplayName = display; changed = true; }
             if (changed) _logger.LogInformation("业务账号已同步：{User}", u);
         }
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>将历史账号「李园涛」合并为 admin（密码保持 88888888 不变）。</summary>
+    private async Task MigrateLegacyAdminAccountAsync(MaterialMgmtDbContext db, CancellationToken ct)
+    {
+        var legacy = await db.Users.FirstOrDefaultAsync(x => x.Username == "李园涛", ct);
+        if (legacy is null) return;
+
+        var admin = await db.Users.FirstOrDefaultAsync(x => x.Username == "admin", ct);
+        if (admin is not null && admin.Id != legacy.Id)
+            db.Users.Remove(admin);
+
+        legacy.Username = "admin";
+        if (string.IsNullOrWhiteSpace(legacy.DisplayName) || legacy.DisplayName == "李园涛")
+            legacy.DisplayName = "李园涛";
+        legacy.Role = Roles.Admin;
+        legacy.IsActive = true;
+        _logger.LogInformation("已将账号「李园涛」重命名为 admin（密码未改）");
         await db.SaveChangesAsync(ct);
     }
 }

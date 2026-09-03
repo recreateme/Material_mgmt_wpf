@@ -71,8 +71,8 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
         _grid.HeadersVisibility = DataGridHeadersVisibility.Column;
         _grid.Columns.Add(GridKit.CheckColumn());
         _grid.Columns.Add(GridKit.Text("ID", "Item.Id", 70));
-        _grid.Columns.Add(GridKit.Text("编码", "Item.Code", 140));
-        _grid.Columns.Add(GridKit.Text("名称", "Item.Name", 200));
+        _grid.Columns.Add(GridKit.Text("编码", "Item.Code", 140, align: TextAlignment.Left));
+        _grid.Columns.Add(GridKit.Text("名称", "Item.Name", 200, align: TextAlignment.Left));
         _grid.Columns.Add(GridKit.Text("描述", "Item.Description", new DataGridLength(1, DataGridLengthUnitType.Star)));
         _grid.Columns.Add(GridKit.Text("创建时间", "Item.CreatedAt", 160, "yyyy-MM-dd HH:mm"));
         _grid.MouseDoubleClick += (_, _) =>

@@ -24,22 +24,23 @@ public sealed class WorkOrderParamsDialog : Window
 {
     public WorkOrderParams? Params { get; private set; }
 
-    private readonly TextBox _temp = new() { Text = "25.0", Height = 28 };
-    private readonly TextBox _hum = new() { Text = "50.0", Height = 28 };
-    private readonly TextBox _prod = new() { Height = 28 };
-    private readonly TextBox _d50 = new() { Height = 28 };
-    private readonly CheckBox _mix = new() { Content = "混料工序有异常" };
-    private readonly TextBox _mixNote = new() { Height = 48, AcceptsReturn = true, IsEnabled = false, TextWrapping = TextWrapping.Wrap };
-    private readonly TextBox _base = new() { Height = 28 };
-    private readonly TextBox _batch = new() { Height = 28 };
-    private readonly TextBox _thick = new() { Height = 28 };
-    private readonly CheckBox _coat = new() { Content = "涂布工序有异常" };
-    private readonly TextBox _coatNote = new() { Height = 48, AcceptsReturn = true, IsEnabled = false, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBox _temp = new() { Text = "25.0" };
+    private readonly TextBox _hum = new() { Text = "50.0" };
+    private readonly TextBox _prod = new();
+    private readonly TextBox _d50 = new();
+    private readonly CheckBox _mix = new() { Content = "混料工序有异常", Margin = new Thickness(0, 4, 0, 0) };
+    private readonly TextBox _mixNote = new() { MinHeight = 48, AcceptsReturn = true, IsEnabled = false, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBox _base = new();
+    private readonly TextBox _batch = new();
+    private readonly TextBox _thick = new();
+    private readonly CheckBox _coat = new() { Content = "涂布工序有异常", Margin = new Thickness(0, 4, 0, 0) };
+    private readonly TextBox _coatNote = new() { MinHeight = 48, AcceptsReturn = true, IsEnabled = false, TextWrapping = TextWrapping.Wrap };
 
     public WorkOrderParamsDialog()
     {
         Title = "开始称量 — 填写工艺参数";
-        Width = 520; Height = 620;
+        Width = 520;
+        Height = 640;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
         _mix.Checked += (_, _) => _mixNote.IsEnabled = true;
@@ -47,45 +48,51 @@ public sealed class WorkOrderParamsDialog : Window
         _coat.Checked += (_, _) => _coatNote.IsEnabled = true;
         _coat.Unchecked += (_, _) => { _coatNote.IsEnabled = false; _coatNote.Text = ""; };
 
-        var form = new Grid { Margin = new Thickness(20) };
-        form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
-        form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var rows = new FrameworkElement[][]
-        {
-            new FrameworkElement[]{ L("温度 * (℃)"), _temp },
-            new FrameworkElement[]{ L("湿度 * (%)"), _hum },
-            new FrameworkElement[]{ L("生产编号 *"), _prod },
-            new FrameworkElement[]{ L("D50 (μm)"), _d50 },
-            new FrameworkElement[]{ L("混料异常"), _mix },
-            new FrameworkElement[]{ L("混料异常说明"), _mixNote },
-            new FrameworkElement[]{ L("基膜 *"), _base },
-            new FrameworkElement[]{ L("批次"), _batch },
-            new FrameworkElement[]{ L("厚度"), _thick },
-            new FrameworkElement[]{ L("涂布异常"), _coat },
-            new FrameworkElement[]{ L("涂布异常说明"), _coatNote },
-        };
-        for (var i = 0; i < rows.Length; i++)
-        {
-            form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            Grid.SetRow(rows[i][0], i); Grid.SetColumn(rows[i][0], 0);
-            Grid.SetRow(rows[i][1], i); Grid.SetColumn(rows[i][1], 1);
-            rows[i][1].Margin = new Thickness(0, 4, 0, 4);
-            form.Children.Add(rows[i][0]); form.Children.Add(rows[i][1]);
-        }
+        var form = new StackPanel { Margin = new Thickness(20, 16, 20, 8) };
+        form.Children.Add(UiTheme.SectionTitle("环境参数"));
+        form.Children.Add(FieldRow("温度 * (℃)", _temp));
+        form.Children.Add(FieldRow("湿度 * (%)", _hum));
+        form.Children.Add(UiTheme.SectionTitle("生产信息"));
+        form.Children.Add(FieldRow("生产编号 *", _prod));
+        form.Children.Add(FieldRow("D50 (μm)", _d50));
+        form.Children.Add(FieldRow("基膜 *", _base));
+        form.Children.Add(FieldRow("批次", _batch));
+        form.Children.Add(FieldRow("厚度", _thick));
+        form.Children.Add(UiTheme.SectionTitle("异常说明"));
+        form.Children.Add(_mix);
+        form.Children.Add(FieldRow("混料异常说明", _mixNote));
+        form.Children.Add(_coat);
+        form.Children.Add(FieldRow("涂布异常说明", _coatNote));
 
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(20, 8, 20, 16)
+        };
+        var cancel = UiTheme.GhostButton("取消");
+        cancel.Click += (_, _) => { DialogResult = false; Close(); };
         var ok = UiTheme.PrimaryButton("开始称量");
-        ok.Height = 34;
-        ok.Margin = new Thickness(20, 0, 20, 16);
+        ok.Margin = new Thickness(0);
         ok.Click += (_, _) => Accept();
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(ok);
 
         var dock = new DockPanel();
-        DockPanel.SetDock(ok, Dock.Bottom);
-        dock.Children.Add(ok);
-        dock.Children.Add(new ScrollViewer { Content = form });
+        DockPanel.SetDock(buttons, Dock.Bottom);
+        dock.Children.Add(buttons);
+        dock.Children.Add(new ScrollViewer { Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         Content = dock;
     }
 
-    private static TextBlock L(string t) => new() { Text = t, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 4, 8, 4) };
+    private static StackPanel FieldRow(string label, FrameworkElement input)
+    {
+        input.Margin = new Thickness(0, 0, 0, 10);
+        return new StackPanel
+        {
+            Children = { UiTheme.FieldLabel(label), input }
+        };
+    }
 
     private void Accept()
     {

@@ -21,14 +21,15 @@ public partial class LoginWindow : Window
         _auth = auth;
         Title = "原料管理系统 — 登录";
         Width = 460;
-        Height = 540;
+        Height = 560;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ResizeMode = ResizeMode.NoResize;
         Background = Brushes.Transparent;
         BuildUi();
     }
 
-    private ComboBox _portal = null!;
+    private RadioButton _operatorRole = null!;
+    private RadioButton _adminRole = null!;
     private TextBox _user = null!;
     private PasswordBox _pass = null!;
     private TextBlock _error = null!;
@@ -37,7 +38,6 @@ public partial class LoginWindow : Window
     {
         var root = new Grid();
 
-        // 全屏背景：深蓝渐变 + 细网格纹路，减少与卡片的生硬对比
         root.Children.Add(new Border { Background = CreateBackdropBrush() });
         root.Children.Add(new Border
         {
@@ -85,19 +85,27 @@ public partial class LoginWindow : Window
             Margin = new Thickness(0, 6, 0, 22)
         });
 
-        stack.Children.Add(FieldLabel("登录入口"));
-        _portal = new ComboBox { Margin = new Thickness(0, 4, 0, 14), Height = 34 };
-        _portal.Items.Add("操作员");
-        _portal.Items.Add("管理员");
-        _portal.SelectedIndex = 0; // 默认操作员优先
-        stack.Children.Add(_portal);
+        stack.Children.Add(UiTheme.FieldLabel("登录身份"));
+        stack.Children.Add(UiTheme.Hint("请按账号实际身份选择，选错将无法登录"));
+        var roleRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 14) };
+        _operatorRole = new RadioButton
+        {
+            Content = "操作员",
+            GroupName = "LoginRole",
+            IsChecked = true,
+            Margin = new Thickness(0, 0, 24, 0)
+        };
+        _adminRole = new RadioButton { Content = "管理员", GroupName = "LoginRole" };
+        roleRow.Children.Add(_operatorRole);
+        roleRow.Children.Add(_adminRole);
+        stack.Children.Add(roleRow);
 
-        stack.Children.Add(FieldLabel("用户名"));
-        _user = new TextBox { Margin = new Thickness(0, 4, 0, 14), Height = 34 };
+        stack.Children.Add(UiTheme.FieldLabel("用户名"));
+        _user = new TextBox { Margin = new Thickness(0, 0, 0, 14) };
         stack.Children.Add(_user);
 
-        stack.Children.Add(FieldLabel("密码"));
-        _pass = new PasswordBox { Margin = new Thickness(0, 4, 0, 10), Height = 34 };
+        stack.Children.Add(UiTheme.FieldLabel("密码"));
+        _pass = new PasswordBox { Margin = new Thickness(0, 0, 0, 10) };
         _pass.KeyDown += (_, e) => { if (e.Key == Key.Enter) DoLogin(); };
         stack.Children.Add(_pass);
 
@@ -105,6 +113,7 @@ public partial class LoginWindow : Window
         {
             Foreground = UiTheme.Brush(UiTheme.Danger),
             TextWrapping = TextWrapping.Wrap,
+            MinHeight = 18,
             Margin = new Thickness(0, 0, 0, 8),
             Visibility = Visibility.Collapsed,
             FontSize = 12
@@ -162,16 +171,8 @@ public partial class LoginWindow : Window
         };
     }
 
-    private static TextBlock FieldLabel(string text) => new()
-    {
-        Text = text,
-        FontSize = 12,
-        FontWeight = FontWeights.SemiBold,
-        Foreground = UiTheme.Brush(UiTheme.Muted)
-    };
-
     private string SelectedPortalRole() =>
-        _portal.SelectedIndex == 0 ? Roles.Operator : Roles.Admin;
+        _adminRole.IsChecked == true ? Roles.Admin : Roles.Operator;
 
     private void DoLogin()
     {
@@ -195,8 +196,8 @@ public partial class LoginWindow : Window
         {
             _auth.Logout();
             ShowError(user.Role == Roles.Admin
-                ? "该账号为管理员，请选择「管理员」入口"
-                : "该账号为操作员，请选择「操作员」入口");
+                ? "该账号为管理员，请选择「管理员」"
+                : "该账号为操作员，请选择「操作员」");
             Shake();
             return;
         }

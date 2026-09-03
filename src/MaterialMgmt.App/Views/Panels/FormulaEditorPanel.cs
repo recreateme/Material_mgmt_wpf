@@ -15,7 +15,8 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle
     private readonly IAuthService _auth;
     private readonly IAuditLog _audit;
     private readonly NavigationService _nav;
-    private readonly TextBlock _title = new() { FontSize = 18, FontWeight = FontWeights.Bold };
+    private readonly TextBlock _breadcrumb = UiTheme.Breadcrumb("");
+    private readonly TextBlock _title = new() { FontSize = 18, FontWeight = FontWeights.Bold, Margin = new Thickness(12, 0, 0, 0) };
     private readonly DataGrid _grid = new();
     private int _formulaId;
     private string _formulaCode = "";
@@ -50,6 +51,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle
         var header = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
         DockPanel.SetDock(header, Dock.Top);
 
+        header.Children.Add(_breadcrumb);
         var bar = new StackPanel { Orientation = Orientation.Horizontal };
         var back = UiTheme.GhostButton("← 返回列表");
         back.Click += (_, _) => _nav.Navigate(AppPage.Formulas);
@@ -105,7 +107,8 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle
             .FirstOrDefault(x => x.Id == _formulaId);
         if (f is null) return;
         _formulaCode = f.Code;
-        _title.Text = $"编辑配方：{f.Code}  {f.Name}";
+        _breadcrumb.Text = $"配方管理  >  编辑 {f.Code}";
+        _title.Text = f.Name;
         _materials = db.Materials.OrderBy(m => m.Code).ToList();
         _items = f.Items.OrderBy(i => i.Sequence).ToList();
         _grid.ItemsSource = null;

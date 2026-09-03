@@ -6,6 +6,7 @@ using MaterialMgmt.App.Services;
 using MaterialMgmt.App.Themes;
 using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Auth;
+using MaterialMgmt.Core.Orders;
 using MaterialMgmt.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -64,6 +65,9 @@ public sealed class HomePanel : UserControl, IPageLifecycle
             }
         };
         _body.Children.Add(banner);
+
+        if (user.IsOperator())
+            AddResumeWorkOrderCard(user);
 
         _body.Children.Add(SectionTitle("快捷入口"));
         var cards = new WrapPanel { Margin = new Thickness(0, 0, 0, 16) };
@@ -136,6 +140,49 @@ public sealed class HomePanel : UserControl, IPageLifecycle
         _deviceRow = new WrapPanel { Margin = new Thickness(0, 0, 0, 16) };
         _body.Children.Add(_deviceRow);
         RefreshDevices();
+    }
+
+    private void AddResumeWorkOrderCard(CurrentUser user)
+    {
+        using var db = _dbFactory.CreateDbContext();
+        var wip = db.WorkOrders.Include(w => w.Formula)
+            .Where(w => w.OperatorId == user.Id && w.Status == OrderRules.InProgress)
+            .OrderByDescending(w => w.Id)
+            .FirstOrDefault();
+        if (wip is null) return;
+
+        var formulaName = $"{wip.Formula.Code} {wip.Formula.Name}";
+        var card = UiTheme.Card(new StackPanel
+        {
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "进行中的工单",
+                    FontWeight = FontWeights.SemiBold,
+                    FontSize = 15,
+                    Foreground = UiTheme.Brush(UiTheme.Warning)
+                },
+                new TextBlock
+                {
+                    Text = $"工单 #{wip.Id}  ·  {formulaName}",
+                    Margin = new Thickness(0, 8, 0, 4),
+                    Foreground = UiTheme.Brush(UiTheme.Text)
+                },
+                new TextBlock
+                {
+                    Text = "点击继续称量",
+                    FontSize = 12,
+                    Foreground = UiTheme.Brush(UiTheme.Primary)
+                }
+            }
+        }, new Thickness(18));
+        card.Margin = new Thickness(0, 0, 0, 16);
+        card.Cursor = Cursors.Hand;
+        card.BorderBrush = UiTheme.Brush(UiTheme.Warning);
+        card.MouseLeftButtonUp += (_, _) =>
+            _nav.Navigate(AppPage.WeighSession, v => ((WeighSessionPanel)v).Load(wip.Id, wip.FormulaId));
+        _body.Children.Add(card);
     }
 
     private WrapPanel _deviceRow = new();

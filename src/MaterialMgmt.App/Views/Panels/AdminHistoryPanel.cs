@@ -53,9 +53,9 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
         _grid.AutoGenerateColumns = false; _grid.IsReadOnly = true; _grid.SelectionMode = DataGridSelectionMode.Extended;
         _grid.Columns.Add(GridKit.CheckColumn());
         _grid.Columns.Add(GridKit.Text("ID", "Item.Id", 70));
-        _grid.Columns.Add(GridKit.Text("配方", "Item.FormulaName", 180));
-        _grid.Columns.Add(GridKit.Text("生产编号", "Item.ProductionNo", 140));
-        _grid.Columns.Add(GridKit.Text("状态", "Item.StatusCn", 90));
+        _grid.Columns.Add(GridKit.Text("配方", "Item.FormulaName", 180, align: TextAlignment.Left));
+        _grid.Columns.Add(GridKit.Text("生产编号", "Item.ProductionNo", 140, align: TextAlignment.Left));
+        _grid.Columns.Add(GridKit.StatusColumn("状态", "Item.Status", "Item.StatusCn"));
         _grid.Columns.Add(GridKit.Text("开始时间", "Item.StartTimeDisplay", 150));
         _grid.Columns.Add(GridKit.Text("结束时间", "Item.EndTimeDisplay", 150));
 
@@ -232,10 +232,10 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
         _grid.AutoGenerateColumns = false; _grid.IsReadOnly = true; _grid.SelectionMode = DataGridSelectionMode.Extended;
         _grid.Columns.Add(GridKit.CheckColumn());
         _grid.Columns.Add(GridKit.Text("ID", "Item.Id", 70));
-        _grid.Columns.Add(GridKit.Text("配方", "Item.FormulaName", 180));
-        _grid.Columns.Add(GridKit.Text("操作员", "Item.Operator", 110));
-        _grid.Columns.Add(GridKit.Text("生产编号", "Item.ProductionNo", 140));
-        _grid.Columns.Add(GridKit.Text("状态", "Item.StatusCn", 90));
+        _grid.Columns.Add(GridKit.Text("配方", "Item.FormulaName", 180, align: TextAlignment.Left));
+        _grid.Columns.Add(GridKit.Text("操作员", "Item.Operator", 110, align: TextAlignment.Left));
+        _grid.Columns.Add(GridKit.Text("生产编号", "Item.ProductionNo", 140, align: TextAlignment.Left));
+        _grid.Columns.Add(GridKit.StatusColumn("状态", "Item.Status", "Item.StatusCn"));
         _grid.Columns.Add(GridKit.Text("开始时间", "Item.StartTimeDisplay", 150));
         _grid.Columns.Add(GridKit.Text("结束时间", "Item.EndTimeDisplay", 150));
 
@@ -252,7 +252,7 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
         using var db = _dbFactory.CreateDbContext();
         _all = db.WorkOrders.Include(w => w.Formula).OrderByDescending(w => w.Id).AsEnumerable()
             .Select(w => new Row(w.Id, $"{w.Formula.Code} {w.Formula.Name}", w.Operator, w.ProductionNo,
-                OrderRules.ToDisplay(w.Status), w.StartTime, w.EndTime))
+                OrderRules.ToDisplay(w.Status), w.StartTime, w.EndTime, w.Status))
             .ToList();
         ApplyFilter();
     }
@@ -360,7 +360,7 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
 
     private sealed record Row(
         int Id, string FormulaName, string Operator, string? ProductionNo,
-        string StatusCn, DateTime StartTime, DateTime? EndTime)
+        string StatusCn, DateTime StartTime, DateTime? EndTime, string Status)
     {
         public string StartTimeDisplay => StartTime.ToString("yyyy-MM-dd HH:mm");
         public string EndTimeDisplay => EndTime?.ToString("yyyy-MM-dd HH:mm") ?? "—";

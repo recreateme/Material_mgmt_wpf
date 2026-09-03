@@ -73,6 +73,68 @@ public static class UiTheme
         Child = child
     };
 
+    public static TextBlock FieldLabel(string text) => new()
+    {
+        Text = text,
+        FontSize = 12,
+        FontWeight = FontWeights.SemiBold,
+        Foreground = Brush(Muted),
+        Margin = new Thickness(0, 0, 0, 4)
+    };
+
+    public static TextBlock Hint(string text) => new()
+    {
+        Text = text,
+        FontSize = 12,
+        Foreground = Brush(Muted),
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 0, 0, 8)
+    };
+
+    public static TextBlock Breadcrumb(string text) => new()
+    {
+        Text = text,
+        FontSize = 12,
+        Foreground = Brush(Muted),
+        Margin = new Thickness(0, 0, 0, 8)
+    };
+
+    public static TextBlock SectionTitle(string text) => new()
+    {
+        Text = text,
+        FontSize = 13,
+        FontWeight = FontWeights.SemiBold,
+        Foreground = Brush(Text),
+        Margin = new Thickness(0, 12, 0, 6)
+    };
+
+    public static TextBlock StatusBadge(string text, Color color) => new()
+    {
+        Text = text,
+        FontSize = 12,
+        FontWeight = FontWeights.SemiBold,
+        Foreground = Brush(color),
+        Padding = new Thickness(8, 3, 8, 3),
+        Background = new SolidColorBrush(Color.FromArgb(0x22, color.R, color.G, color.B)),
+        HorizontalAlignment = HorizontalAlignment.Center
+    };
+
+    public static Color StatusColor(string status) => status switch
+    {
+        "in_progress" => Warning,
+        "completed" => Success,
+        "cancelled" => Muted,
+        _ => Text
+    };
+
+    public static string StatusLabel(string status) => status switch
+    {
+        "in_progress" => "进行中",
+        "completed" => "已完成",
+        "cancelled" => "已取消",
+        _ => status
+    };
+
     private static void TrySetStyle(FrameworkElement el, string key)
     {
         if (Application.Current?.TryFindResource(key) is Style style)

@@ -1,6 +1,6 @@
 # 原料管理系统 WPF — 完整打包脚本
 # 产物目录：dist\原料管理系统\
-# 压缩包：  dist\原料管理系统-v4.1.4-win-x64.zip
+# 压缩包：  dist\原料管理系统-v4.1.5-win-x64.zip
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
@@ -8,7 +8,7 @@ if (-not (Test-Path (Join-Path $Root "src\MaterialMgmt.sln"))) {
     throw "未找到解决方案，请在仓库根目录执行（含 src\MaterialMgmt.sln）"
 }
 
-$Version = "4.1.4"
+$Version = "4.1.5"
 $Proj    = Join-Path $Root "src\MaterialMgmt.App\MaterialMgmt.App.csproj"
 $Out     = Join-Path $Root "dist\原料管理系统"
 $Zip     = Join-Path $Root "dist\原料管理系统-v$Version-win-x64.zip"
@@ -163,7 +163,7 @@ $readme = @"
 
 【默认账号】（仅空库首次启动写入）
   root / root666       开发人员
-  admin / admin123     管理人员
+  admin / 88888888     管理人员（李园涛）
   operator / operator123  实验人员
 
 【硬件】

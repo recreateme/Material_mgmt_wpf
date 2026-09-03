@@ -77,8 +77,8 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
         _grid.SelectionMode = DataGridSelectionMode.Extended;
         _grid.Columns.Add(GridKit.CheckColumn());
         _grid.Columns.Add(GridKit.Text("ID", "Item.Id", 70));
-        _grid.Columns.Add(GridKit.Text("编码", "Item.Code", 140));
-        _grid.Columns.Add(GridKit.Text("名称", "Item.Name", 200));
+        _grid.Columns.Add(GridKit.Text("编码", "Item.Code", 140, align: TextAlignment.Left));
+        _grid.Columns.Add(GridKit.Text("名称", "Item.Name", 200, align: TextAlignment.Left));
         _grid.Columns.Add(new DataGridTextColumn
         {
             Header = "状态",

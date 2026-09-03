@@ -115,7 +115,7 @@ public partial class MainWindow : Window
 
         var nav = new Border
         {
-            Width = 188,
+            Width = 208,
             Background = UiTheme.Brush(UiTheme.NavBg)
         };
         DockPanel.SetDock(nav, Dock.Left);
@@ -177,6 +177,19 @@ public partial class MainWindow : Window
         root.Children.Add(_host);
         Content = root;
         _nav.AttachHost(_host);
+        _nav.Navigated += OnNavigated;
+    }
+
+    private bool _syncingNav;
+
+    private void OnNavigated(AppPage page)
+    {
+        var highlight = page == AppPage.FormulaEditor ? AppPage.Formulas : page;
+        var item = _navItems.FirstOrDefault(x => x.Page == highlight);
+        if (item is null) return;
+        _syncingNav = true;
+        try { _navList.SelectedItem = item; }
+        finally { _syncingNav = false; }
     }
 
     private void RegisterPages()
@@ -217,6 +230,7 @@ public partial class MainWindow : Window
 
     private void OnNavChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_syncingNav) return;
         if (_navList.SelectedItem is not NavItem item) return;
         var user = _auth.CurrentUser;
         if (user is null || !NavigationService.CanAccess(item.Page, user)) return;

@@ -18,14 +18,22 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
     private readonly IAuthService _auth;
     private readonly IAuditLog _audit;
     private readonly NavigationService _nav;
-    private readonly ComboBox _formulas = new() { Height = 32, Width = 360 };
-    private readonly TextBlock _preview = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0) };
+    private readonly ComboBox _formulas = new() { Width = 360, MinWidth = 280 };
+    private readonly TextBlock _preview = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 12, 0, 0),
+        Foreground = UiTheme.Brush(UiTheme.Muted),
+        FontSize = 13
+    };
+    private readonly Button _start;
     private List<Formula> _list = new();
 
     public SessionSelectPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth,
         IAuditLog audit, NavigationService nav)
     {
         _dbFactory = dbFactory; _auth = auth; _audit = audit; _nav = nav;
+        _start = UiTheme.PrimaryButton("填写工艺参数并开始");
         Build();
     }
 
@@ -36,25 +44,25 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
         if (!CodeService.IsFormulaCode(code)) return;
         var f = _list.FirstOrDefault(x => string.Equals(x.Code, code, StringComparison.OrdinalIgnoreCase));
         if (f is null) { MessageBox.Show($"未找到配方：{code}"); return; }
-        _formulas.SelectedItem = f;
+        _formulas.SelectedItem = _formulas.Items.Cast<FormulaOption>().FirstOrDefault(x => x.Id == f.Id);
     }
 
     private void Build()
     {
         var root = new StackPanel { Margin = new Thickness(24) };
         root.Children.Add(new TextBlock { Text = "开始称量", FontSize = 20, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 16) });
-        root.Children.Add(new TextBlock { Text = "选择配方（或扫描 FML- 配方码）", Margin = new Thickness(0, 0, 0, 8) });
+        root.Children.Add(UiTheme.FieldLabel("选择配方"));
+        root.Children.Add(UiTheme.Hint("下拉选择或扫描 FML- 配方码"));
         _formulas.DisplayMemberPath = "Display";
         _formulas.SelectionChanged += (_, _) => Preview();
         root.Children.Add(_formulas);
         root.Children.Add(_preview);
-        var start = UiTheme.PrimaryButton("填写工艺参数并开始");
-        start.Height = 36;
-        start.Width = 220;
-        start.Margin = new Thickness(0, 16, 0, 0);
-        start.HorizontalAlignment = HorizontalAlignment.Left;
-        start.Click += (_, _) => Start();
-        root.Children.Add(start);
+        _start.Height = 36;
+        _start.Width = 220;
+        _start.Margin = new Thickness(0, 16, 0, 0);
+        _start.HorizontalAlignment = HorizontalAlignment.Left;
+        _start.Click += (_, _) => Start();
+        root.Children.Add(_start);
         Content = root;
     }
 
@@ -64,18 +72,34 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
         _list = db.Formulas.Where(f => f.IsActive).OrderBy(f => f.Code).ToList();
         _formulas.ItemsSource = _list.Select(f => new FormulaOption(f)).ToList();
         if (_formulas.Items.Count > 0) _formulas.SelectedIndex = 0;
+        else Preview();
     }
 
     private void Preview()
     {
-        if (_formulas.SelectedItem is not FormulaOption opt) { _preview.Text = ""; return; }
+        if (_formulas.SelectedItem is not FormulaOption opt)
+        {
+            _preview.Text = "暂无可用配方，请联系管理员配置。";
+            _preview.Foreground = UiTheme.Brush(UiTheme.Warning);
+            _start.IsEnabled = false;
+            return;
+        }
+
         using var db = _dbFactory.CreateDbContext();
         var items = db.FormulaItems.Include(i => i.Material).Where(i => i.FormulaId == opt.Id)
             .OrderBy(i => i.Sequence).ToList();
-        _preview.Text = items.Count == 0
-            ? "该配方尚无称量步骤，请先在配方编辑器中配置。"
-            : "称量步骤：\n" + string.Join("\n", items.Select(i =>
-                $"{i.Sequence}. {i.Material.Code} {i.Material.Name}  [{i.WeightMin:F3} ~ {i.WeightMax:F3} g]"));
+        if (items.Count == 0)
+        {
+            _preview.Text = "该配方尚无称量步骤，请先在配方编辑器中配置。";
+            _preview.Foreground = UiTheme.Brush(UiTheme.Warning);
+            _start.IsEnabled = false;
+            return;
+        }
+
+        _preview.Foreground = UiTheme.Brush(UiTheme.Muted);
+        _preview.Text = "称量步骤预览：\n" + string.Join("\n", items.Select(i =>
+            $"{i.Sequence}. {i.Material.Code}  {i.Material.Name}   [{i.WeightMin:F3} ~ {i.WeightMax:F3} g]"));
+        _start.IsEnabled = true;
     }
 
     private void Start()

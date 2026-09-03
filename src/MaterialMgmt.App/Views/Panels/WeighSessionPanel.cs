@@ -46,6 +46,14 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
         Foreground = UiTheme.Brush(UiTheme.Text), VerticalAlignment = VerticalAlignment.Center
     };
 
+    private readonly TextBlock _progress = new()
+    {
+        FontSize = 14,
+        FontWeight = FontWeights.SemiBold,
+        Foreground = UiTheme.Brush(UiTheme.Primary),
+        Margin = new Thickness(0, 0, 0, 12)
+    };
+
     private readonly TextBlock _guide = new()
     {
         FontSize = 16, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16),
@@ -136,6 +144,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
 
         var card = UiTheme.Card(new StackPanel(), new Thickness(28, 24, 28, 28));
         var center = (StackPanel)card.Child!;
+        center.Children.Add(_progress);
         center.Children.Add(_scanOkBanner);
         center.Children.Add(_guide);
         center.Children.Add(_weight);
@@ -274,11 +283,14 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
 
         if (_engine.IsComplete)
         {
+            _progress.Text = $"已完成 {_engine.TotalCount} / {_engine.TotalCount} 步";
             if (!keepGuideFromStatus) _guide.Text = "全部步骤已完成";
             _status.Text = "";
             _confirm.IsEnabled = false;
             return;
         }
+
+        _progress.Text = $"第 {_engine.StepIndex + 1} / {_engine.TotalCount} 步";
 
         if (!keepGuideFromStatus && item is not null && _engine.State == WeighState.WaitingScan)
         {

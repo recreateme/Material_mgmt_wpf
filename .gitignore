@@ -33,3 +33,6 @@ Desktop.ini
 .DS_Store
 *.swp
 *~
+
+# APM package cache (skills live in .agents/ and .cursor/agents/)
+/apm_modules/
