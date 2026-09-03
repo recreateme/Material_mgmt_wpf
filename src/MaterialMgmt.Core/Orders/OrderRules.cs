@@ -18,6 +18,8 @@ public static class OrderRules
 
     public static void EnsureCanDelete(WorkOrder wo, bool allowCompleted)
     {
+        if (wo.Status == InProgress)
+            throw new InvalidOperationException("进行中的工单请先取消再删除");
         if (wo.Status == Completed && !allowCompleted)
             throw new InvalidOperationException("已完成的工单不可删除");
     }

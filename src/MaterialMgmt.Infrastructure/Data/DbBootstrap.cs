@@ -202,7 +202,8 @@ public sealed class DbBootstrap
             if (user is null) continue;
             var changed = false;
             if (user.Role != role) { user.Role = role; changed = true; }
-            if (user.DisplayName != display) { user.DisplayName = display; changed = true; }
+            if (user.DisplayName == "李园涛" && display != "李园涛")
+            { user.DisplayName = display; changed = true; }
             if (changed) _logger.LogInformation("业务账号已同步：{User}", u);
         }
         await db.SaveChangesAsync(ct);

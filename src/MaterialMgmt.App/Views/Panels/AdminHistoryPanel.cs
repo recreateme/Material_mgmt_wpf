@@ -86,7 +86,7 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
 
     private void Resume()
     {
-        if (CurrentOrder() is not { } r) return;
+        if (CurrentOrder() is not { } r) { MessageBox.Show("请先选择工单", "提示"); return; }
         if (r.Status != "in_progress") { MessageBox.Show("仅可恢复进行中的工单"); return; }
         _nav.Navigate(AppPage.WeighSession, v => ((WeighSessionPanel)v).Load(r.Id, r.FormulaId));
     }
@@ -151,7 +151,7 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
 
     private void ExportOne()
     {
-        if (CurrentOrder() is not { } r) return;
+        if (CurrentOrder() is not { } r) { MessageBox.Show("请先选择工单", "提示"); return; }
         var dlg = new SaveFileDialog { Filter = "Excel|*.xlsx", FileName = ExportService.SuggestFilename(r.Id, r.FormulaName) };
         if (dlg.ShowDialog() != true) return;
         _export.ExportWorkOrder(r.Id, dlg.FileName);
@@ -269,7 +269,7 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
 
     private void ShowDetail()
     {
-        if (CurrentOrder() is not { } r) return;
+        if (CurrentOrder() is not { } r) { MessageBox.Show("请先选择工单", "提示"); return; }
         using var db = _dbFactory.CreateDbContext();
         var wo = db.WorkOrders.Include(w => w.Records).ThenInclude(x => x.FormulaItem).ThenInclude(i => i.Material)
             .First(w => w.Id == r.Id);
@@ -317,7 +317,7 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
 
     private void ExportOne()
     {
-        if (CurrentOrder() is not { } r) return;
+        if (CurrentOrder() is not { } r) { MessageBox.Show("请先选择工单", "提示"); return; }
         var dlg = new SaveFileDialog { Filter = "Excel|*.xlsx", FileName = ExportService.SuggestFilename(r.Id, r.FormulaName) };
         if (dlg.ShowDialog() != true) return;
         _export.ExportWorkOrder(r.Id, dlg.FileName);
@@ -336,14 +336,26 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
 
     private void Delete()
     {
-        var ids = CheckedOrderIds();
-        if (ids.Count == 0) { MessageBox.Show("请勾选要删除的工单"); return; }
-        if (MessageBox.Show($"确认删除 {ids.Count} 条工单？", "确认", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        var rows = SelectedAdminRows();
+        if (rows.Count == 0) { MessageBox.Show("请勾选要删除的工单"); return; }
+        var targets = rows.Where(r => r.Status is "completed" or "cancelled").ToList();
+        if (targets.Count == 0)
+        {
+            MessageBox.Show("仅可删除「已完成 / 已取消」的工单；进行中请先取消");
+            return;
+        }
+        var skipped = rows.Count - targets.Count;
+        var tip = skipped > 0
+            ? $"将删除 {targets.Count} 条已完成/已取消工单（已跳过 {skipped} 条进行中）？"
+            : $"确认删除 {targets.Count} 条工单？此操作不可恢复。";
+        if (MessageBox.Show(tip, "确认", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         try
         {
+            var ids = targets.Select(r => r.Id).ToList();
             _orders.DeleteMany(ids, allowCompleted: true);
             _audit.Log("order", $"删除工单 {string.Join(",", ids)}", _auth.CurrentUser?.Username ?? "");
             Refresh();
+            UiFeedback.Success($"已删除 {targets.Count} 条工单。");
         }
         catch (Exception ex) { MessageBox.Show(ex.Message); }
     }
@@ -351,11 +363,13 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
     private Row? CurrentOrder() => GridKit.Current<Row>(_grid)?.Item
                                   ?? GridKit.CheckedItems<Row>(_grid).FirstOrDefault();
 
-    private List<int> CheckedOrderIds()
+    private List<int> CheckedOrderIds() => SelectedAdminRows().Select(x => x.Id).ToList();
+
+    private List<Row> SelectedAdminRows()
     {
         var list = GridKit.CheckedItems<Row>(_grid);
         if (list.Count == 0 && CurrentOrder() is { } one) list = new List<Row> { one };
-        return list.Select(x => x.Id).ToList();
+        return list;
     }
 
     private sealed record Row(

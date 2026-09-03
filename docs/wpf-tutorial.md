@@ -13,7 +13,7 @@
 | 项目 | 职责 | 你该先看 |
 |------|------|----------|
 | `MaterialMgmt.App` | 窗口、面板、导航、主题、设备总线 | `App.xaml.cs`、`MainWindow.xaml.cs` |
-| `MaterialMgmt.Core` | 与 UI 无关的业务规则 | `WorkflowEngine.cs`、`CodeService.cs` |
+| `MaterialMgmt.Core` | 与 UI 无关的业务规则 | `WorkflowEngine.cs`、`CodeService.cs`、`OrderRules.cs` |
 | `MaterialMgmt.Infrastructure` | 数据库、串口、导出、配置 | `MaterialMgmtDbContext.cs`、`ScaleWorker.cs` |
 | `MaterialMgmt.Tests` | 状态机等单元测试 | `WorkflowEngineTests.cs` |
 

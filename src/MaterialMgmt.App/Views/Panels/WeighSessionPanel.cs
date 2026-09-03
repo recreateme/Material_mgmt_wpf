@@ -399,6 +399,6 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
         UiFeedback.Success("工单已取消。");
         DetachScale();
         _engine = null;
-        _nav.Navigate(AppPage.SessionSelect);
+        _nav.Navigate(AppPage.OperatorHistory);
     }
 }

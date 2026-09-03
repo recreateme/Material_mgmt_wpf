@@ -135,7 +135,7 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
 
         var dlg = new Window
         {
-            Title = "新建配方", Width = 400, Height = 280,
+            Title = "新建配方", Width = 400, SizeToContent = SizeToContent.Height, MinHeight = 280,
             WindowStartupLocation = WindowStartupLocation.CenterOwner, Owner = Window.GetWindow(this)
         };
         var stack = new StackPanel { Margin = new Thickness(20) };
@@ -185,12 +185,17 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
             list = new List<Formula> { row.Item };
         if (list.Count == 0) { MessageBox.Show("请先勾选配方"); return; }
         using var db = _dbFactory.CreateDbContext();
-        var entity = db.Formulas.First(x => x.Id == list[0].Id);
-        entity.IsActive = !entity.IsActive;
+        var n = 0;
+        foreach (var f in list)
+        {
+            var entity = db.Formulas.First(x => x.Id == f.Id);
+            entity.IsActive = !entity.IsActive;
+            _audit.Log("formula", $"{(entity.IsActive ? "启用" : "停用")}配方 {entity.Code}", _auth.CurrentUser?.Username ?? "");
+            n++;
+        }
         db.SaveChanges();
-        _audit.Log("formula", $"{(entity.IsActive ? "启用" : "停用")}配方 {entity.Code}", _auth.CurrentUser?.Username ?? "");
         Refresh();
-        UiFeedback.Success($"配方 {entity.Code} 已{(entity.IsActive ? "启用" : "停用")}。");
+        UiFeedback.Success($"已更新 {n} 个配方的启用状态。");
     }
 
     private void DeleteSelected()

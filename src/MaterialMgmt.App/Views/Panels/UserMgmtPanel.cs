@@ -69,13 +69,18 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
         var me = _auth.CurrentUser!;
         var userBox = new TextBox { Height = 30, Text = row?.Username ?? "", IsEnabled = row is null, Margin = new Thickness(0, 4, 0, 8) };
         var display = new TextBox { Height = 30, Text = row?.DisplayName ?? "", Margin = new Thickness(0, 4, 0, 8) };
-        var role = new ComboBox { Height = 30, Margin = new Thickness(0, 4, 0, 8) };
-        if (me.IsRoot()) { role.Items.Add(Roles.Admin); role.Items.Add(Roles.Operator); }
-        else role.Items.Add(Roles.Operator);
-        role.SelectedItem = row?.Role ?? Roles.Operator;
+        var role = new ComboBox { Margin = new Thickness(0, 4, 0, 8), DisplayMemberPath = nameof(RoleOption.Label) };
+        if (me.IsRoot())
+        {
+            role.Items.Add(new RoleOption(Roles.Admin));
+            role.Items.Add(new RoleOption(Roles.Operator));
+        }
+        else role.Items.Add(new RoleOption(Roles.Operator));
+        role.SelectedItem = role.Items.Cast<RoleOption>().FirstOrDefault(x => x.Value == (row?.Role ?? Roles.Operator))
+                            ?? role.Items.Cast<RoleOption>().First();
         var pw = new PasswordBox { Height = 30, Margin = new Thickness(0, 4, 0, 8), Visibility = row is null ? Visibility.Visible : Visibility.Collapsed };
 
-        var dlg = new Window { Title = row is null ? "新增用户" : "编辑用户", Width = 380, Height = 340, Owner = Window.GetWindow(this), WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var dlg = new Window { Title = row is null ? "新增用户" : "编辑用户", Width = 400, SizeToContent = SizeToContent.Height, MinHeight = 300, Owner = Window.GetWindow(this), WindowStartupLocation = WindowStartupLocation.CenterOwner };
         var stack = new StackPanel { Margin = new Thickness(20) };
         stack.Children.Add(new TextBlock { Text = "用户名" }); stack.Children.Add(userBox);
         stack.Children.Add(new TextBlock { Text = "显示名" }); stack.Children.Add(display);
@@ -91,11 +96,13 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
                 {
                     if (string.IsNullOrWhiteSpace(userBox.Text) || string.IsNullOrWhiteSpace(pw.Password))
                     { MessageBox.Show(dlg, "请填写用户名和密码"); return; }
+                    if (pw.Password.Length < 6)
+                    { MessageBox.Show(dlg, "密码至少 6 位"); return; }
                     db.Users.Add(new User
                     {
                         Username = userBox.Text.Trim(),
                         DisplayName = string.IsNullOrWhiteSpace(display.Text) ? userBox.Text.Trim() : display.Text.Trim(),
-                        Role = (string)role.SelectedItem!,
+                        Role = ((RoleOption)role.SelectedItem!).Value,
                         PasswordHash = _auth.HashPassword(pw.Password),
                         IsActive = true,
                         CreatedAt = DateTime.Now
@@ -105,10 +112,10 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
                 else
                 {
                     var u = db.Users.First(x => x.Id == row.Id);
-                    if (u.Id == me.Id && (string)role.SelectedItem! != u.Role)
+                    if (u.Id == me.Id && ((RoleOption)role.SelectedItem!).Value != u.Role)
                     { MessageBox.Show(dlg, "不能修改自己的角色"); return; }
                     u.DisplayName = display.Text.Trim();
-                    u.Role = (string)role.SelectedItem!;
+                    u.Role = ((RoleOption)role.SelectedItem!).Value;
                     u.UpdatedAt = DateTime.Now;
                     _audit.Log("user", $"编辑用户 {u.Username}", me.Username);
                 }
@@ -127,7 +134,7 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
     {
         if (CurrentRow() is not { } row) return;
         var pw = new PasswordBox { Height = 30, Margin = new Thickness(0, 4, 0, 8) };
-        var dlg = new Window { Title = "重置密码", Width = 340, Height = 180, Owner = Window.GetWindow(this), WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var dlg = new Window { Title = "重置密码", Width = 340, SizeToContent = SizeToContent.Height, MinHeight = 160, Owner = Window.GetWindow(this), WindowStartupLocation = WindowStartupLocation.CenterOwner };
         var stack = new StackPanel { Margin = new Thickness(20) };
         stack.Children.Add(new TextBlock { Text = "新密码" }); stack.Children.Add(pw);
         var ok = UiTheme.PrimaryButton("确定");
@@ -141,6 +148,7 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
             db.SaveChanges();
             _audit.Log("user", $"重置密码 {u.Username}", _auth.CurrentUser?.Username ?? "");
             dlg.DialogResult = true; dlg.Close();
+            UiFeedback.Success($"已重置 {row.Username} 的密码。");
         };
         stack.Children.Add(ok); dlg.Content = stack; dlg.ShowDialog();
     }
@@ -320,5 +328,10 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
         public bool IsActive { get; }
         public string RoleDisplay { get; }
         public string ActiveDisplay { get; }
+    }
+
+    private sealed record RoleOption(string Value)
+    {
+        public string Label => RoleLabels.ToDisplay(Value);
     }
 }

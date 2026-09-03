@@ -1,6 +1,6 @@
 # 技术说明
 
-原料管理系统 WPF v4.1.5 — 运维联调与开发架构。
+原料管理系统 WPF v4.1.6 — 运维联调与开发架构。
 
 ---
 
@@ -95,7 +95,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 产物：
 
 - `dist/原料管理系统/` — 完整文件夹（须整夹分发）
-- `dist/原料管理系统-v4.1.5-win-x64.zip` — 压缩包
+- `dist/原料管理系统-v4.1.6-win-x64.zip` — 压缩包
 
 详见 [DEPLOY.md](../DEPLOY.md) 与 [hardware-checklist.md](hardware-checklist.md)。
 
@@ -110,6 +110,8 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 | 原料错误 | 标签是否等于 `MAT-…` 编码 |
 | 确认按钮灰 | 读数未稳定或超配方上下限 |
 | 迁库后空数据 | 确认 `data/material_mgmt.db` 在 exe 同级 |
+| 添加步骤保存失败 | 升级到 v4.1.6+；上下限须 > 0 |
+| 删除工单失败 | 进行中须先取消 |
 
 ---
 
@@ -178,7 +180,7 @@ _devices.BarcodeRouted += (code, simulated) =>
 };
 ```
 
-仅**当前导航页**收到扫码，避免后台页误触发。列表页扫码写入筛选框；编码弹窗扫码自动勾选手工指定并填入。
+仅**当前导航页**收到扫码，避免后台页误触发。列表页扫码写入筛选框；编码弹窗扫码自动勾选手工指定并填入。配方编辑步骤弹窗打开时，扫原料码会选中对应材料。
 
 ## 2.6 WorkflowEngine 状态机
 
@@ -214,7 +216,8 @@ CRC16 Modbus。若现场天平协议不同，需修改 `ScaleWorker`。
 ## 2.9 数据库
 
 - 上下文：`MaterialMgmtDbContext`
-- 启动：`DbBootstrap` 确保表存在、写入种子账号（空库时）
+- 启动：`DbBootstrap` 确保表存在、写入种子账号（空库时）；已有账号的自定义显示名不会被覆盖（仅迁移历史名「李园涛」）
+- `formula_items` 对 `(formula_id, sequence)` 有唯一索引；调整步骤顺序时用 `FormulaSequence.BuildTwoPhase` 先写入临时序号再写 1..n，避免中间态冲突
 - 兼容 PyQt v3.0 的 `material_mgmt.db`，可直接拷贝使用
 
 ## 2.10 开发与测试
@@ -230,6 +233,8 @@ dotnet run --project MaterialMgmt.App
 
 - `WorkflowEngineTests` — 扫码比对、重扫纠错、恢复工单
 - `CodeServiceTests` — MAT/FML 编码生成
+- `FormulaSequenceTests` — 步骤顺序两阶段写入
+- `OrderRulesTests` — 进行中工单不可删除
 - `DbSmokeTests` — 数据库初始化
 
 ## 2.11 扩展建议
