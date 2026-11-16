@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
 using MaterialMgmt.App.Themes;
-using MaterialMgmt.Core.Abstractions;
 
 namespace MaterialMgmt.App.Views.Dialogs;
 
@@ -40,9 +39,11 @@ public sealed class WorkOrderParamsDialog : Window
     {
         Title = "开始称量 — 填写工艺参数";
         Width = 520;
-        Height = 640;
+        MinHeight = 420;
+        MaxHeight = 720;
+        SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
+        ResizeMode = ResizeMode.CanResizeWithGrip;
         _mix.Checked += (_, _) => _mixNote.IsEnabled = true;
         _mix.Unchecked += (_, _) => { _mixNote.IsEnabled = false; _mixNote.Text = ""; };
         _coat.Checked += (_, _) => _coatNote.IsEnabled = true;
@@ -64,25 +65,13 @@ public sealed class WorkOrderParamsDialog : Window
         form.Children.Add(_coat);
         form.Children.Add(FieldRow("涂布异常说明", _coatNote));
 
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(20, 8, 20, 16)
-        };
         var cancel = UiTheme.GhostButton("取消");
         cancel.Click += (_, _) => { DialogResult = false; Close(); };
         var ok = UiTheme.PrimaryButton("开始称量");
         ok.Margin = new Thickness(0);
         ok.Click += (_, _) => Accept();
-        buttons.Children.Add(cancel);
-        buttons.Children.Add(ok);
 
-        var dock = new DockPanel();
-        DockPanel.SetDock(buttons, Dock.Bottom);
-        dock.Children.Add(buttons);
-        dock.Children.Add(new ScrollViewer { Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        Content = dock;
+        Content = UiTheme.DialogBody(form, UiTheme.DialogFooterButtons(cancel, ok));
     }
 
     private static StackPanel FieldRow(string label, FrameworkElement input)

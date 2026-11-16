@@ -140,15 +140,20 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
             return;
 
         using var db = _dbFactory.CreateDbContext();
+        var blocked = selected.Where(m => db.FormulaItems.Any(i => i.MaterialId == m.Id)).ToList();
+        if (blocked.Count > 0)
+        {
+            var lines = string.Join("\n", blocked.Select(m => $"· {m.Code}  {m.Name}"));
+            MessageBox.Show(
+                $"以下原材料已被配方引用，无法删除（整批中止，未删除任何项）：\n{lines}",
+                "无法删除", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         foreach (var m in selected)
         {
             var entity = db.Materials.FirstOrDefault(x => x.Id == m.Id);
             if (entity is null) continue;
-            if (db.FormulaItems.Any(i => i.MaterialId == entity.Id))
-            {
-                MessageBox.Show($"材料 {entity.Code} 已被配方引用，无法删除", "失败");
-                return;
-            }
             db.Materials.Remove(entity);
             _audit.Log("material", $"删除材料 {entity.Code}", _auth.CurrentUser?.Username ?? "");
         }
@@ -173,7 +178,10 @@ internal sealed class MaterialEditDialog : Window
         _dbFactory = dbFactory;
         _existing = existing;
         Title = existing is null ? "新增原材料" : "编辑原材料";
-        Width = 420; Height = 360;
+        Width = 420;
+        MinHeight = 280;
+        MaxHeight = 520;
+        SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
 
@@ -199,7 +207,7 @@ internal sealed class MaterialEditDialog : Window
             if (_existing is null) _code.Text = CodeService.PreviewNext(CodeKind.Material, last);
         };
 
-        var stack = new StackPanel { Margin = new Thickness(20) };
+        var stack = new StackPanel { Margin = new Thickness(20, 16, 20, 8) };
         stack.Children.Add(new TextBlock { Text = "名称 *" });
         stack.Children.Add(_name);
         stack.Children.Add(new TextBlock { Text = "描述" });
@@ -208,11 +216,9 @@ internal sealed class MaterialEditDialog : Window
         stack.Children.Add(new TextBlock { Text = "编码（可扫码填入）" });
         stack.Children.Add(_code);
         var save = UiTheme.PrimaryButton("保存");
-        save.Height = 34;
-        save.Margin = new Thickness(0, 8, 0, 0);
+        save.Margin = new Thickness(0);
         save.Click += (_, _) => Save();
-        stack.Children.Add(save);
-        Content = stack;
+        Content = UiTheme.DialogBody(stack, UiTheme.DialogFooterButtons(save));
 
         BarcodeFillHelper.AttachDialog(this, devices, _manual, _code);
     }

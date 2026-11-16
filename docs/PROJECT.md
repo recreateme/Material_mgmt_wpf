@@ -1,6 +1,6 @@
 # 项目结构与模块对照
 
-原料管理系统 WPF v4.1.6 — 文件、代码分层与功能映射。
+原料管理系统 WPF v4.2.0 — 文件、代码分层与功能映射。
 
 ## 仓库目录
 
@@ -61,30 +61,34 @@ Material_Mgmt_wpf/
 
 | 面板类 | 导航项 | 角色 | 主要功能 |
 |--------|--------|------|----------|
-| `HomePanel` | 首页 | 全部 | 设备状态概览、快捷入口 |
-| `MaterialsPanel` | 原材料 | admin | 材料 CRUD、批量删除 |
-| `FormulasPanel` | 配方管理 | admin | 配方列表、多选启用/停用 |
-| `FormulaEditorPanel` | 编辑步骤 | admin | 步骤上下限、扫码选料、保存顺序 |
-| `SessionSelectPanel` | 开始称量 | operator | 选配方、工艺参数、开工单 |
-| `WeighSessionPanel` | 称量中 | operator | 扫码比对、实时称重、确认步骤 |
-| `OperatorHistoryPanel` | 我的工单 | operator | 继续/取消进行中、删除已完成或已取消、导出 |
-| `AdminHistoryPanel` | 工单历史 | admin | 全量历史、异常说明、导出；进行中不可删 |
-| `UserMgmtPanel` | 用户管理 | admin | 账号 CRUD |
+| `HomePanel` | 首页 | 全部 | 设备状态概览、快捷入口（业务人员可开称量窗） |
+| `MaterialsPanel` | 原材料 | business | 材料 CRUD、批量删除 |
+| `FormulasPanel` | 配方管理 | business | 配方列表、复制配方、多选启用/停用 |
+| `FormulaEditorPanel` | 编辑步骤 | business | 步骤上下限、扫码选料、保存顺序 |
+| `AdminHistoryPanel` | 工单历史 | business | 全量历史、异常说明、导出；进行中不可删 |
+| `UserMgmtPanel` | 用户管理 | system_admin | 业务人员账号 CRUD / 重置密码 |
 | `SettingsPanel` | 系统设置 | 全部 | 秤/扫码 COM、模式、自检、改密 |
+| `WeighHostWindow` | 称量窗（独立） | business | 宿主：开始称量 / 称量中 / 我的工单 |
+| `SessionSelectPanel` | 开始称量 | business（称量窗） | 选配方、工艺参数、开工单 |
+| `WeighSessionPanel` | 称量中 | business（称量窗） | 进度侧栏、扫码比对、回称、确认步骤 |
+| `OperatorHistoryPanel` | 我的工单 | business（称量窗） | 继续/取消进行中、删除已完成或已取消、导出 |
 
 ## 核心服务对照
 
 | 类型 | 文件 | 说明 |
 |------|------|------|
-| 设备中枢 | `App/Services/DeviceHub.cs` | 天平连接、扫码双源（串口/HID）、条码路由、自动重连 |
-| 导航 | `App/Services/NavigationService.cs` | 页面注册、缓存、`IBarcodeHandler` 当前页路由 |
-| 称量状态机 | `Core/Workflow/WorkflowEngine.cs` | 等待扫码 → 称重 → 确认 → 下一步 |
+| 设备中枢 | `App/Services/DeviceHub.cs` | 天平连接、扫码双源、焦点/独占路由、自动重连 |
+| 导航 | `App/Services/NavigationService.cs` | 页面注册、缓存、角色权限、`IBarcodeHandler` |
+| 称量工作区 | `App/Services/WeighWorkspace.cs` | 单称量窗生命周期；与主窗退出登录协调 |
+| 称量状态机 | `Core/Workflow/WorkflowEngine.cs` | 等待扫码 → 称重 → 确认 → 下一步；回称 `RewindToStep` |
+| 角色迁移 | `Core/Auth/RoleMigration.cs` | admin→system_admin，operator→business，删 root |
 | 天平 | `Infrastructure/Hardware/ScaleWorker.cs` | Modbus-RTU 读重、端口探测 |
 | 扫码串口 | `Infrastructure/Hardware/BarcodeSerialService.cs` | USB COM 按 CR/LF 收整帧 |
 | 扫码 HID | `Infrastructure/Hardware/BarcodeInputService.cs` | 键盘楔入聚合（应急回退） |
 | 配置 | `Infrastructure/Services/ConfigService.cs` | `settings.ini` 读写 |
-| 数据库 | `Infrastructure/Data/DbBootstrap.cs` | 建库、种子账号、WAL |
-| 工单 | `Infrastructure/Services/OrderService.cs` | 创建/恢复/完成；删除走 `OrderRules`（进行中不可删） |
+| 数据库 | `Infrastructure/Data/DbBootstrap.cs` | 建库、种子账号、WAL、v4.2 角色迁移 |
+| 工单 | `Infrastructure/Services/OrderService.cs` | 创建/恢复/完成/作废有效记录；删除走 `OrderRules` |
+| 配方 | `Infrastructure/Services/FormulaService.cs` | 含复制配方 |
 | 配方序号 | `Core/Formulas/FormulaSequence.cs` | `(formula_id, sequence)` 唯一索引的两阶段写入 |
 | 导出 | `Infrastructure/Export/ExportService.cs` | ClosedXML Excel |
 
@@ -104,7 +108,9 @@ Material_Mgmt_wpf/
 ```
 扫码枪 (USB COM 或 HID)
     → DeviceHub.PublishBarcode
-    → MainWindow 路由到当前面板 IBarcodeHandler.OnBarcode
+    → ResolveBarcodeHandler：
+         进行中称量 → 称量窗独占
+         否则 → 前台焦点窗（主窗或称量窗）当前面板
     → WeighSessionPanel → WorkflowEngine.OnBarcode（原料比对）
     → SessionSelectPanel → 配方码 FML- 选中
     → FormulaEditorPanel → 步骤弹窗打开时按编码选中原料

@@ -36,3 +36,9 @@ Desktop.ini
 
 # APM package cache (skills live in .agents/ and .cursor/agents/)
 /apm_modules/
+/.vendor/
+
+# Local Cursor / APM agent tooling (not product source)
+/.agents/
+/.cursor/
+/apm.yml

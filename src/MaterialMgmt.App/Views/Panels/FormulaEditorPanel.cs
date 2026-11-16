@@ -204,25 +204,12 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         form.Children.Add(UiTheme.FieldLabel("备注"));
         form.Children.Add(notes);
 
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(20, 8, 20, 16)
-        };
         var cancel = UiTheme.GhostButton("取消");
         cancel.Click += (_, _) => { dlg.DialogResult = false; dlg.Close(); };
         var ok = UiTheme.PrimaryButton("保存");
         ok.Margin = new Thickness(0);
         ok.Click += (_, _) => SaveStep(dlg, existing, mat, min, max, notes);
-        buttons.Children.Add(cancel);
-        buttons.Children.Add(ok);
-
-        var dock = new DockPanel();
-        DockPanel.SetDock(buttons, Dock.Bottom);
-        dock.Children.Add(buttons);
-        dock.Children.Add(new ScrollViewer { Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
-        dlg.Content = dock;
+        dlg.Content = UiTheme.DialogBody(form, UiTheme.DialogFooterButtons(cancel, ok));
 
         _stepMaterialCombo = mat;
         _stepDialogOpen = true;

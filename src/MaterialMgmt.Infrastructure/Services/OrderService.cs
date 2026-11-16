@@ -73,6 +73,28 @@ public sealed class OrderService
             r.IsValid);
     }
 
+    /// <summary>作废某步全部有效称重记录（回称前调用）。返回作废条数。</summary>
+    public int InvalidateValidRecords(int workOrderId, int formulaItemId)
+    {
+        using var db = _factory.CreateDbContext();
+        var list = db.WeightRecords
+            .Where(r => r.WorkOrderId == workOrderId && r.FormulaItemId == formulaItemId && r.IsValid)
+            .ToList();
+        foreach (var r in list)
+            r.IsValid = false;
+        db.SaveChanges();
+        return list.Count;
+    }
+
+    public HashSet<int> GetValidFormulaItemIds(int workOrderId)
+    {
+        using var db = _factory.CreateDbContext();
+        return db.WeightRecords
+            .Where(r => r.WorkOrderId == workOrderId && r.IsValid)
+            .Select(r => r.FormulaItemId)
+            .ToHashSet();
+    }
+
     public void CompleteWorkOrder(int workOrderId)
     {
         using var db = _factory.CreateDbContext();

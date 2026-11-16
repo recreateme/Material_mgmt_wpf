@@ -135,6 +135,34 @@ public static class UiTheme
         _ => status
     };
 
+    /// <summary>长内容弹窗：上方可滚，底栏固定按钮区。</summary>
+    public static DockPanel DialogBody(UIElement formContent, UIElement footerButtons)
+    {
+        var dock = new DockPanel();
+        DockPanel.SetDock(footerButtons, Dock.Bottom);
+        dock.Children.Add(footerButtons);
+        dock.Children.Add(new ScrollViewer
+        {
+            Content = formContent,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        });
+        return dock;
+    }
+
+    public static StackPanel DialogFooterButtons(params Button[] buttons)
+    {
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(20, 8, 20, 16)
+        };
+        foreach (var b in buttons)
+            row.Children.Add(b);
+        return row;
+    }
+
     private static void TrySetStyle(FrameworkElement el, string key)
     {
         if (Application.Current?.TryFindResource(key) is Style style)

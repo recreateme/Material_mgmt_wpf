@@ -58,11 +58,13 @@ public sealed class NavigationService
 
     public static bool CanAccess(AppPage page, CurrentUser user) => page switch
     {
-        AppPage.Home or AppPage.Settings => true,
-        AppPage.Materials or AppPage.Formulas or AppPage.FormulaEditor or AppPage.AdminHistory or AppPage.UserMgmt
-            => user.IsAdmin(),
-        AppPage.SessionSelect or AppPage.WeighSession or AppPage.OperatorHistory
-            => user.IsOperator(),
+        AppPage.Home => RolePermissions.CanAccessHome(user),
+        AppPage.Settings => RolePermissions.CanAccessSettings(user),
+        AppPage.UserMgmt => RolePermissions.CanManageUsers(user),
+        AppPage.Materials or AppPage.Formulas or AppPage.FormulaEditor
+            or AppPage.AdminHistory or AppPage.OperatorHistory
+            or AppPage.SessionSelect or AppPage.WeighSession
+            => RolePermissions.CanAccessBusinessModules(user),
         _ => false
     };
 }

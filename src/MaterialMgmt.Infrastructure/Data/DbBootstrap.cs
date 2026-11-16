@@ -7,7 +7,7 @@ using MaterialMgmt.Core.Entities;
 
 namespace MaterialMgmt.Infrastructure.Data;
 
-/// <summary>启动初始化：建表（空库）、Alembic 兼容校验、种子账号、WAL。</summary>
+/// <summary>启动初始化：建表（空库）、Alembic 兼容校验、角色迁移、种子账号、WAL。</summary>
 public sealed class DbBootstrap
 {
     private readonly IAppPaths _paths;
@@ -85,7 +85,6 @@ public sealed class DbBootstrap
             return;
         }
 
-        // 兼容旧库：无 alembic_version 时按列推断并 stamp
         if (!tables.Contains("alembic_version"))
         {
             var stamp = await InferStampAsync(db, ct);
@@ -93,7 +92,6 @@ public sealed class DbBootstrap
             await StampAlembicAsync(db, stamp, ct);
         }
 
-        // 确保关键工艺参数列存在（增量补齐，避免现场缺列）
         await EnsureWorkOrderColumnsAsync(db, ct);
     }
 
@@ -129,7 +127,6 @@ public sealed class DbBootstrap
         foreach (var sql in alters)
             await db.Database.ExecuteSqlRawAsync(sql, ct);
 
-        // formulas.code 若缺失（极旧库）
         var fcols = await GetColumnsAsync(db, "formulas", ct);
         if (!fcols.Contains("code"))
             await db.Database.ExecuteSqlRawAsync("ALTER TABLE formulas ADD COLUMN code VARCHAR(64)", ct);
@@ -166,10 +163,8 @@ public sealed class DbBootstrap
         {
             var seeds = new (string U, string Pw, string Display, string Role)[]
             {
-                ("root", "root666", "开发人员", Roles.Root),
-                ("admin", "88888888", "管理人员", Roles.Admin),
-                ("operator", "operator123", "实验人员", Roles.Operator),
-                ("王瑶", "88888888", "王瑶", Roles.Operator),
+                ("admin", "88888888", "系统管理员", Roles.SystemAdmin),
+                ("operator", "operator123", "业务人员", Roles.Business),
             };
             foreach (var (u, pw, display, role) in seeds)
             {
@@ -189,27 +184,50 @@ public sealed class DbBootstrap
         }
 
         await MigrateLegacyAdminAccountAsync(db, ct);
+        await MigrateRolesV42Async(db, ct);
+    }
 
-        // 非首次：仅同步已存在业务账号的角色/显示名
-        var business = new (string U, string Display, string Role)[]
+    /// <summary>v4.2：admin→system_admin，operator→business，删除 root。不改动业务表数据。</summary>
+    private async Task MigrateRolesV42Async(MaterialMgmtDbContext db, CancellationToken ct)
+    {
+        var snaps = await db.Users
+            .Select(u => new RoleMigration.UserSnap(u.Id, u.Username, u.Role))
+            .ToListAsync(ct);
+
+        // 已全部为新角色且无 root → 跳过
+        if (snaps.All(s => s.Role is Roles.SystemAdmin or Roles.Business))
+            return;
+
+        var plan = RoleMigration.Plan(snaps);
+        if (plan.Error is not null)
         {
-            ("admin", "管理人员", Roles.Admin),
-            ("王瑶", "王瑶", Roles.Operator),
-        };
-        foreach (var (u, display, role) in business)
-        {
-            var user = await db.Users.FirstOrDefaultAsync(x => x.Username == u, ct);
-            if (user is null) continue;
-            var changed = false;
-            if (user.Role != role) { user.Role = role; changed = true; }
-            if (user.DisplayName == "李园涛" && display != "李园涛")
-            { user.DisplayName = display; changed = true; }
-            if (changed) _logger.LogInformation("业务账号已同步：{User}", u);
+            _logger.LogError("角色迁移中止：{Error}", plan.Error);
+            throw new InvalidOperationException($"角色迁移失败：{plan.Error}");
         }
+
+        foreach (var (id, newRole) in plan.Updates)
+        {
+            var u = await db.Users.FirstAsync(x => x.Id == id, ct);
+            var old = u.Role;
+            u.Role = newRole;
+            if (newRole == Roles.SystemAdmin &&
+                u.DisplayName is "管理人员" or "开发人员" or "李园涛")
+                u.DisplayName = "系统管理员";
+            _logger.LogInformation("角色已迁移：{User} {Old} → {New}", u.Username, old, newRole);
+        }
+
+        foreach (var id in plan.DeleteIds)
+        {
+            var u = await db.Users.FirstOrDefaultAsync(x => x.Id == id, ct);
+            if (u is null) continue;
+            db.Users.Remove(u);
+            _logger.LogInformation("已删除废弃账号：{User}", u.Username);
+        }
+
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>将历史账号「李园涛」合并为 admin（密码保持 88888888 不变）。</summary>
+    /// <summary>将历史账号「李园涛」合并为 admin（密码保持不变）。</summary>
     private async Task MigrateLegacyAdminAccountAsync(MaterialMgmtDbContext db, CancellationToken ct)
     {
         var legacy = await db.Users.FirstOrDefaultAsync(x => x.Username == "李园涛", ct);
@@ -221,9 +239,9 @@ public sealed class DbBootstrap
 
         legacy.Username = "admin";
         if (string.IsNullOrWhiteSpace(legacy.DisplayName) ||
-            legacy.DisplayName is "李园涛" or "管理人员")
-            legacy.DisplayName = "管理人员";
-        legacy.Role = Roles.Admin;
+            legacy.DisplayName is "李园涛" or "管理人员" or "系统管理员")
+            legacy.DisplayName = "系统管理员";
+        legacy.Role = Roles.LegacyAdmin; // 随后由 MigrateRolesV42Async 转为 system_admin
         legacy.IsActive = true;
         _logger.LogInformation("已将账号「李园涛」重命名为 admin（密码未改）");
         await db.SaveChangesAsync(ct);

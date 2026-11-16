@@ -26,6 +26,12 @@ public sealed class DeviceHub : IDisposable
     public event Action? ScannerStatusChanged;
     public event Action<string, bool>? BarcodeRouted;
 
+    /// <summary>解析当前应接收扫码的页面处理器（主窗/称量窗）。</summary>
+    public Func<IBarcodeHandler?>? ResolveBarcodeHandler { get; set; }
+
+    /// <summary>称量进行中时为 true：扫码只进称量窗，不广播给主窗弹窗。</summary>
+    public Func<bool>? IsBarcodeExclusive { get; set; }
+
     public BarcodeInputService Barcode { get; }
     public BarcodeSerialService SerialBarcode { get; }
 
@@ -107,11 +113,21 @@ public sealed class DeviceHub : IDisposable
         ScannerStatusChanged?.Invoke();
         var dispatcher = Application.Current?.Dispatcher;
         if (dispatcher is null)
-            BarcodeRouted?.Invoke(normalized, simulated);
+            DispatchBarcode(normalized, simulated);
         else if (dispatcher.CheckAccess())
-            BarcodeRouted?.Invoke(normalized, simulated);
+            DispatchBarcode(normalized, simulated);
         else
-            dispatcher.Invoke(() => BarcodeRouted?.Invoke(normalized, simulated));
+            dispatcher.Invoke(() => DispatchBarcode(normalized, simulated));
+    }
+
+    private void DispatchBarcode(string normalized, bool simulated)
+    {
+        var exclusive = IsBarcodeExclusive?.Invoke() == true;
+        var handler = ResolveBarcodeHandler?.Invoke();
+        handler?.OnBarcode(normalized, simulated);
+        // 独占称量时不广播，避免主窗筛选/弹窗抢码
+        if (!exclusive)
+            BarcodeRouted?.Invoke(normalized, simulated);
     }
 
     public static string NormalizeCode(string code) => (code ?? "").Trim();
@@ -449,9 +465,9 @@ public static class RoleLabels
 {
     public static string ToDisplay(string role) => role switch
     {
-        Roles.Root => "开发人员",
-        Roles.Admin => "管理人员",
-        Roles.Operator => "实验人员",
+        Roles.SystemAdmin or Roles.LegacyAdmin => "系统管理员",
+        Roles.Business or Roles.LegacyOperator => "业务人员",
+        Roles.LegacyRoot => "已废弃(root)",
         _ => role
     };
 }

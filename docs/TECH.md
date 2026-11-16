@@ -1,6 +1,6 @@
 # 技术说明
 
-原料管理系统 WPF v4.1.6 — 运维联调与开发架构。
+原料管理系统 WPF v4.2.0 — 运维联调与开发架构。
 
 ---
 
@@ -95,7 +95,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 产物：
 
 - `dist/原料管理系统/` — 完整文件夹（须整夹分发）
-- `dist/原料管理系统-v4.1.6-win-x64.zip` — 压缩包
+- `dist/原料管理系统-v4.2.0-win-x64.zip` — 压缩包
 
 详见 [DEPLOY.md](../DEPLOY.md) 与 [hardware-checklist.md](hardware-checklist.md)。
 
@@ -110,7 +110,8 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 | 原料错误 | 标签是否等于 `MAT-…` 编码 |
 | 确认按钮灰 | 读数未稳定或超配方上下限 |
 | 迁库后空数据 | 确认 `data/material_mgmt.db` 在 exe 同级 |
-| 添加步骤保存失败 | 升级到 v4.1.6+；上下限须 > 0 |
+| 添加步骤保存失败 | 升级到 v4.2+；上下限须 > 0；长弹窗底栏应固定可见 |
+| 系统管理员无原料菜单 | 正常：主数据仅业务人员；称量请开称量窗 |
 | 删除工单失败 | 进行中须先取消 |
 
 ---

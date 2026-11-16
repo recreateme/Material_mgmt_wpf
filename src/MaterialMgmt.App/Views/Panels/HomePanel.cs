@@ -17,15 +17,17 @@ public sealed class HomePanel : UserControl, IPageLifecycle
     private readonly IAuthService _auth;
     private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
     private readonly NavigationService _nav;
+    private readonly WeighWorkspace _weigh;
     private readonly DeviceHub _devices;
     private readonly StackPanel _body = new() { Margin = new Thickness(24) };
 
     public HomePanel(IAuthService auth, IDbContextFactory<MaterialMgmtDbContext> dbFactory,
-        NavigationService nav, DeviceHub devices)
+        NavigationService nav, WeighWorkspace weigh, DeviceHub devices)
     {
         _auth = auth;
         _dbFactory = dbFactory;
         _nav = nav;
+        _weigh = weigh;
         _devices = devices;
         Content = new ScrollViewer { Content = _body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         _devices.ScaleStatusChanged += () => Dispatcher.Invoke(RefreshDevices);
@@ -66,7 +68,7 @@ public sealed class HomePanel : UserControl, IPageLifecycle
         };
         _body.Children.Add(banner);
 
-        if (user.IsOperator())
+        if (user.IsBusiness())
             AddResumeWorkOrderCard(user);
 
         _body.Children.Add(SectionTitle("快捷入口"));
@@ -111,12 +113,13 @@ public sealed class HomePanel : UserControl, IPageLifecycle
             cards.Children.Add(b);
         }
 
-        Card("开始称量", "选择配方并进入称重流程", () => _nav.Navigate(AppPage.SessionSelect), user.IsOperator());
-        Card("原材料", "维护原材料主数据", () => _nav.Navigate(AppPage.Materials), user.IsAdmin());
-        Card("配方管理", "维护配方与称量步骤", () => _nav.Navigate(AppPage.Formulas), user.IsAdmin());
-        Card("工单历史", "查看与导出全部工单", () => _nav.Navigate(AppPage.AdminHistory), user.IsAdmin());
-        Card("我的工单", "查看本人工单并恢复称量", () => _nav.Navigate(AppPage.OperatorHistory), user.IsOperator());
-        Card("用户管理", "管理操作员/管理员账号", () => _nav.Navigate(AppPage.UserMgmt), user.IsAdmin());
+        var biz = user.IsBusiness();
+        Card("打开称量窗", "开始称量 / 我的工单（独立窗口）", () => _weigh.Open(AppPage.SessionSelect), biz);
+        Card("原材料", "维护原材料主数据", () => _nav.Navigate(AppPage.Materials), biz);
+        Card("配方管理", "维护配方与称量步骤", () => _nav.Navigate(AppPage.Formulas), biz);
+        Card("工单历史", "查看与导出全部工单", () => _nav.Navigate(AppPage.AdminHistory), biz);
+        Card("我的工单", "在称量窗中查看与恢复", () => _weigh.Open(AppPage.OperatorHistory), biz);
+        Card("用户管理", "维护业务人员账号", () => _nav.Navigate(AppPage.UserMgmt), user.IsSystemAdmin());
         Card("系统设置", "串口、扫码与改密", () => _nav.Navigate(AppPage.Settings), true);
         _body.Children.Add(cards);
 
@@ -124,15 +127,22 @@ public sealed class HomePanel : UserControl, IPageLifecycle
         var stats = new WrapPanel { Margin = new Thickness(0, 0, 0, 16) };
         using (var db = _dbFactory.CreateDbContext())
         {
-            stats.Children.Add(Stat("原材料", db.Materials.Count().ToString()));
-            stats.Children.Add(Stat("启用配方", db.Formulas.Count(f => f.IsActive).ToString()));
-            if (user.IsAdmin())
+            if (biz)
+            {
+                stats.Children.Add(Stat("原材料", db.Materials.Count().ToString()));
+                stats.Children.Add(Stat("启用配方", db.Formulas.Count(f => f.IsActive).ToString()));
                 stats.Children.Add(Stat("全部工单", db.WorkOrders.Count().ToString()));
-            else
                 stats.Children.Add(Stat("我的工单", db.WorkOrders.Count(w => w.OperatorId == user.Id).ToString()));
-            stats.Children.Add(Stat("进行中",
-                db.WorkOrders.Count(w => w.Status == "in_progress" &&
-                    (user.IsAdmin() || w.OperatorId == user.Id)).ToString()));
+                stats.Children.Add(Stat("进行中",
+                    db.WorkOrders.Count(w => w.Status == "in_progress").ToString()));
+            }
+            else
+            {
+                stats.Children.Add(Stat("业务人员",
+                    db.Users.Count(u => u.Role == Roles.Business).ToString()));
+                stats.Children.Add(Stat("启用账号",
+                    db.Users.Count(u => u.Role == Roles.Business && u.IsActive).ToString()));
+            }
         }
         _body.Children.Add(stats);
 
@@ -180,8 +190,7 @@ public sealed class HomePanel : UserControl, IPageLifecycle
         card.Margin = new Thickness(0, 0, 0, 16);
         card.Cursor = Cursors.Hand;
         card.BorderBrush = UiTheme.Brush(UiTheme.Warning);
-        card.MouseLeftButtonUp += (_, _) =>
-            _nav.Navigate(AppPage.WeighSession, v => ((WeighSessionPanel)v).Load(wip.Id, wip.FormulaId));
+        card.MouseLeftButtonUp += (_, _) => _weigh.OpenResume(wip.Id, wip.FormulaId);
         _body.Children.Add(card);
     }
 

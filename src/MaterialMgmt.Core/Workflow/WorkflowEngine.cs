@@ -172,4 +172,46 @@ public sealed class WorkflowEngine
             WeighState.WaitingScan,
             $"步骤 {StepIndex + 1}/{TotalCount}\n请扫描 【{next.Material.Name}】 的条码（{next.Material.Code}）\n目标：{next.WeightMin} ~ {next.WeightMax} g"), pending);
     }
+
+    /// <summary>
+    /// 回到某步重新称量。调用方须确认该步已有有效记录并已作废；不可对无记录的未来步调用。
+    /// </summary>
+    public StepStatus RewindToStep(int stepIndex)
+    {
+        if (stepIndex < 0 || stepIndex >= _items.Count)
+            return new StepStatus(State, "步骤索引无效", IsError: true);
+
+        StepIndex = stepIndex;
+        _scannedCode = "";
+        _hasEffectiveWeight = false;
+        _lastWeight = 0;
+        State = WeighState.WaitingScan;
+        var item = _items[StepIndex];
+        return new StepStatus(
+            WeighState.WaitingScan,
+            $"重新称量步骤 {StepIndex + 1}/{TotalCount}\n请扫描 【{item.Material.Name}】 的条码（{item.Material.Code}）\n目标：{item.WeightMin} ~ {item.WeightMax} g");
+    }
+
+    /// <summary>确认后跳过仍带有效记录的后续步骤（回称中间步后保留后面记录的场景）。</summary>
+    public StepStatus SkipWhileCompleted(Func<int, bool> hasValidRecord)
+    {
+        while (StepIndex < _items.Count && hasValidRecord(_items[StepIndex].Id))
+            StepIndex++;
+
+        _scannedCode = "";
+        _hasEffectiveWeight = false;
+        _lastWeight = 0;
+
+        if (StepIndex >= _items.Count)
+        {
+            State = WeighState.Complete;
+            return new StepStatus(WeighState.Complete, "🎉 所有步骤已完成！");
+        }
+
+        State = WeighState.WaitingScan;
+        var next = _items[StepIndex];
+        return new StepStatus(
+            WeighState.WaitingScan,
+            $"步骤 {StepIndex + 1}/{TotalCount}\n请扫描 【{next.Material.Name}】 的条码（{next.Material.Code}）\n目标：{next.WeightMin} ~ {next.WeightMax} g");
+    }
 }

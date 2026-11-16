@@ -16,10 +16,13 @@ namespace MaterialMgmt.App;
 public partial class MainWindow : Window
 {
     private readonly IAuthService _auth;
+    private readonly IAuditLog _audit;
     private readonly IConfigService _config;
     private readonly NavigationService _nav;
     private readonly DeviceHub _devices;
+    private readonly WeighWorkspace _weigh;
     private readonly IServiceProvider _sp;
+    private Button? _openWeighBtn;
 
     private readonly ListBox _navList = new();
     private readonly ContentControl _host = new();
@@ -32,15 +35,19 @@ public partial class MainWindow : Window
 
     public MainWindow(
         IAuthService auth,
+        IAuditLog audit,
         IConfigService config,
         NavigationService nav,
         DeviceHub devices,
+        WeighWorkspace weigh,
         IServiceProvider sp)
     {
         _auth = auth;
+        _audit = audit;
         _config = config;
         _nav = nav;
         _devices = devices;
+        _weigh = weigh;
         _sp = sp;
 
         Title = AppInfo.WindowTitle;
@@ -50,10 +57,10 @@ public partial class MainWindow : Window
         BuildUi();
         RegisterPages();
         PreviewKeyDown += OnPreviewKeyDown;
+        WireBarcodeRouting();
 
         _devices.ScaleStatusChanged += () => Dispatcher.Invoke(UpdateDeviceUi);
         _devices.ScannerStatusChanged += () => Dispatcher.Invoke(UpdateDeviceUi);
-        _devices.BarcodeRouted += OnBarcodeRouted;
         _deviceTimer.Tick += (_, _) =>
         {
             _devices.Tick(_config);
@@ -61,14 +68,41 @@ public partial class MainWindow : Window
         };
         _deviceTimer.Start();
 
-        Closed += async (_, _) =>
+        Closing += (_, e) =>
+        {
+            if (_weigh.IsOpen)
+                _weigh.Close();
+        };
+        Closed += (_, _) =>
         {
             _deviceTimer.Stop();
+            _weigh.Close();
             _devices.Dispose();
             var (w, h) = ((int)ActualWidth, (int)ActualHeight);
             if (w > 100 && h > 100)
                 _config.SaveWindowSize(w, h, WindowState == WindowState.Maximized);
         };
+    }
+
+    private void WireBarcodeRouting()
+    {
+        _devices.IsBarcodeExclusive = () => _weigh.ExclusiveBarcode;
+        _devices.ResolveBarcodeHandler = ResolveBarcodeHandler;
+    }
+
+    private IBarcodeHandler? ResolveBarcodeHandler()
+    {
+        if (_weigh.ExclusiveBarcode)
+            return _weigh.CurrentBarcodeHandler;
+
+        var active = Application.Current?.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+        if (_weigh.IsOpen && active is not null && ReferenceEquals(active, _weigh.HostWindow))
+            return _weigh.CurrentBarcodeHandler;
+        if (active is not null && ReferenceEquals(active, this))
+            return _host.Content as IBarcodeHandler;
+        if (_weigh.IsOpen && _weigh.HostWindow?.IsActive == true)
+            return _weigh.CurrentBarcodeHandler;
+        return _host.Content as IBarcodeHandler;
     }
 
     public void OnLogin(CurrentUser user)
@@ -77,6 +111,8 @@ public partial class MainWindow : Window
         _userRole.Text = RoleLabels.ToDisplay(user.Role);
         _nav.ClearCache();
         RebuildNav(user);
+        if (_openWeighBtn is not null)
+            _openWeighBtn.Visibility = user.IsBusiness() ? Visibility.Visible : Visibility.Collapsed;
         _nav.Navigate(AppPage.Home);
 
         // 登录后：电子秤自动识别 + 扫码枪按配置连接
@@ -148,6 +184,9 @@ public partial class MainWindow : Window
 
         var footer = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(footer, Dock.Bottom);
+        _openWeighBtn = UiTheme.NavFooterButton("打开称量窗");
+        _openWeighBtn.Visibility = Visibility.Collapsed;
+        _openWeighBtn.Click += (_, _) => _weigh.Open(AppPage.SessionSelect);
         var pw = UiTheme.NavFooterButton("修改密码");
         pw.Click += (_, _) =>
         {
@@ -157,6 +196,7 @@ public partial class MainWindow : Window
         };
         var logout = UiTheme.NavFooterButton("退出登录", logout: true);
         logout.Click += (_, _) => DoLogout();
+        footer.Children.Add(_openWeighBtn);
         footer.Children.Add(pw);
         footer.Children.Add(logout);
 
@@ -214,12 +254,11 @@ public partial class MainWindow : Window
             if (NavigationService.CanAccess(page, user))
                 _navItems.Add(new NavItem(title, page));
         }
+        // 称量相关页仅在称量窗；主窗保留主数据与工单历史
         Add("首页", AppPage.Home);
         Add("原材料", AppPage.Materials);
         Add("配方管理", AppPage.Formulas);
-        Add("开始称量", AppPage.SessionSelect);
         Add("工单历史", AppPage.AdminHistory);
-        Add("我的工单", AppPage.OperatorHistory);
         Add("用户管理", AppPage.UserMgmt);
         Add("系统设置", AppPage.Settings);
         _navList.ItemsSource = null;
@@ -260,14 +299,6 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private void OnBarcodeRouted(string code, bool simulated)
-    {
-        if (_host.Content is IBarcodeHandler handler)
-            handler.OnBarcode(code, simulated);
-        else
-            _scanDot.Text = $"● 扫码：{code}";
-    }
-
     private void UpdateDeviceUi()
     {
         _scaleDot.Text = _devices.IsScaleConnected
@@ -279,16 +310,17 @@ public partial class MainWindow : Window
                     : $"● 电子秤：未连接 — {_devices.ScaleLastError}";
         _scaleDot.Foreground = UiTheme.Brush(_devices.IsScaleConnected ? UiTheme.Success : UiTheme.Danger);
         var scanLabel = _devices.ScannerSourceLabel;
+        var exclusive = _weigh.ExclusiveBarcode ? " · 称量独占" : "";
         if (!string.IsNullOrEmpty(_devices.LastScanCode) && _devices.IsScannerListening)
-            _scanDot.Text = $"● 扫码：{_devices.LastScanCode}（{scanLabel}）";
+            _scanDot.Text = $"● 扫码：{_devices.LastScanCode}（{scanLabel}）{exclusive}";
         else if (_devices.IsScannerSerialConnected)
-            _scanDot.Text = $"● 扫码枪：已连接（{scanLabel}）";
+            _scanDot.Text = $"● 扫码枪：已连接（{scanLabel}）{exclusive}";
         else if (!string.IsNullOrEmpty(_devices.ScannerLastError))
             _scanDot.Text = $"● 扫码枪：{_devices.ScannerLastError}";
         else
             _scanDot.Text = _devices.IsScannerListening
-                ? $"● 扫码枪：监听中（{scanLabel}）"
-                : $"● 扫码枪：空闲（{scanLabel}）";
+                ? $"● 扫码枪：监听中（{scanLabel}）{exclusive}"
+                : $"● 扫码枪：空闲（{scanLabel}）{exclusive}";
         var scanOk = _devices.IsScannerSerialConnected
                      || scanLabel.Contains("HID", StringComparison.Ordinal)
                      || scanLabel.Contains("关闭", StringComparison.Ordinal);
@@ -299,6 +331,7 @@ public partial class MainWindow : Window
 
     private void DoLogout()
     {
+        _weigh.Close();
         _devices.DisconnectScale();
         _auth.Logout();
         _nav.ClearCache();
@@ -307,7 +340,7 @@ public partial class MainWindow : Window
         // 退出登录期间避免「无窗口」触发应用退出
         Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-        var login = new LoginWindow(_auth) { Owner = this };
+        var login = new LoginWindow(_auth, _audit) { Owner = this };
         if (login.ShowDialog() == true && login.LoggedInUser is not null)
         {
             OnLogin(login.LoggedInUser);

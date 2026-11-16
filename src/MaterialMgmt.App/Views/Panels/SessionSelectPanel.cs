@@ -49,21 +49,24 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
 
     private void Build()
     {
-        var root = new StackPanel { Margin = new Thickness(24) };
-        root.Children.Add(new TextBlock { Text = "开始称量", FontSize = 20, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 16) });
-        root.Children.Add(UiTheme.FieldLabel("选择配方"));
-        root.Children.Add(UiTheme.Hint("下拉选择或扫描 FML- 配方码"));
+        var form = new StackPanel { Margin = new Thickness(24, 24, 24, 8) };
+        form.Children.Add(new TextBlock { Text = "开始称量", FontSize = 20, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 16) });
+        form.Children.Add(UiTheme.FieldLabel("选择配方"));
+        form.Children.Add(UiTheme.Hint("下拉选择或扫描 FML- 配方码"));
         _formulas.DisplayMemberPath = "Display";
         _formulas.SelectionChanged += (_, _) => Preview();
-        root.Children.Add(_formulas);
-        root.Children.Add(_preview);
-        _start.Height = 36;
+        form.Children.Add(_formulas);
+        form.Children.Add(_preview);
+
+        _start.Height = 40;
         _start.Width = 220;
-        _start.Margin = new Thickness(0, 16, 0, 0);
+        _start.Margin = new Thickness(0);
         _start.HorizontalAlignment = HorizontalAlignment.Left;
         _start.Click += (_, _) => Start();
-        root.Children.Add(_start);
-        Content = root;
+        var footer = new StackPanel { Margin = new Thickness(24, 8, 24, 24) };
+        footer.Children.Add(_start);
+
+        Content = UiTheme.DialogBody(form, footer);
     }
 
     private void LoadFormulas()

@@ -109,4 +109,47 @@ public class WorkflowEngineTests
         var eng = new WorkflowEngine(new[] { Item(1, "MAT-000001", "A", 1, 2, 1) }, 10);
         Assert.Equal(WeighState.Weighing, eng.OnBarcode("  MAT-000001  ").State);
     }
+
+    [Fact]
+    public void RewindToStep_ResetsToWaitingScan()
+    {
+        var items = new[]
+        {
+            Item(1, "MAT-000001", "A", 1, 2, 1),
+            Item(2, "MAT-000002", "B", 1, 2, 2)
+        };
+        var eng = new WorkflowEngine(items, 10);
+        eng.OnBarcode("MAT-000001");
+        eng.OnWeightUpdate(1.5, true);
+        eng.ConfirmWeight(false);
+        Assert.Equal(1, eng.StepIndex);
+
+        var st = eng.RewindToStep(0);
+        Assert.Equal(0, eng.StepIndex);
+        Assert.Equal(WeighState.WaitingScan, st.State);
+        Assert.Contains("重新称量", st.Message);
+    }
+
+    [Fact]
+    public void SkipWhileCompleted_JumpsPastValidSteps()
+    {
+        var items = new[]
+        {
+            Item(1, "MAT-000001", "A", 1, 2, 1),
+            Item(2, "MAT-000002", "B", 1, 2, 2),
+            Item(3, "MAT-000003", "C", 1, 2, 3)
+        };
+        var eng = new WorkflowEngine(items, 10, startIndex: 0);
+        // 模拟回称第 1 步后确认，第 2 步仍有有效记录
+        eng.OnBarcode("MAT-000001");
+        eng.OnWeightUpdate(1.5, true);
+        eng.ConfirmWeight(false);
+        Assert.Equal(1, eng.StepIndex);
+
+        var valid = new HashSet<int> { 2 }; // 第 2 步仍有效
+        var st = eng.SkipWhileCompleted(id => valid.Contains(id));
+        Assert.Equal(2, eng.StepIndex);
+        Assert.Equal(WeighState.WaitingScan, st.State);
+        Assert.Equal("MAT-000003", eng.CurrentItem!.Material.Code);
+    }
 }

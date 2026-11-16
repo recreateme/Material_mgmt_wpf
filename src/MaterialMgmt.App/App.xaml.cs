@@ -42,6 +42,7 @@ public partial class App : Application
         sc.AddMaterialMgmtInfrastructure(paths.AppRoot);
         sc.AddSingleton<NavigationService>();
         sc.AddSingleton<DeviceHub>();
+        sc.AddSingleton<WeighWorkspace>();
         sc.AddTransient<HomePanel>();
         sc.AddTransient<MaterialsPanel>();
         sc.AddTransient<FormulasPanel>();
@@ -70,7 +71,8 @@ public partial class App : Application
         }
 
         var auth = _services.GetRequiredService<IAuthService>();
-        var login = new LoginWindow(auth);
+        var audit = _services.GetRequiredService<IAuditLog>();
+        var login = new LoginWindow(auth, audit);
         if (login.ShowDialog() != true || login.LoggedInUser is null)
         {
             Shutdown(0);

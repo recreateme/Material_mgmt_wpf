@@ -1,6 +1,6 @@
-# 原料管理系统 WPF — 完整打包脚本
+﻿# 原料管理系统 WPF — 完整打包脚本
 # 产物目录：dist\原料管理系统\
-# 压缩包：  dist\原料管理系统-v4.1.6-win-x64.zip
+# 压缩包：  dist\原料管理系统-v4.2.0-win-x64.zip
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
@@ -8,7 +8,7 @@ if (-not (Test-Path (Join-Path $Root "src\MaterialMgmt.sln"))) {
     throw "未找到解决方案，请在仓库根目录执行（含 src\MaterialMgmt.sln）"
 }
 
-$Version = "4.1.6"
+$Version = "4.2.0"
 $Proj    = Join-Path $Root "src\MaterialMgmt.App\MaterialMgmt.App.csproj"
 $Out     = Join-Path $Root "dist\原料管理系统"
 $Zip     = Join-Path $Root "dist\原料管理系统-v$Version-win-x64.zip"
@@ -162,9 +162,12 @@ $readme = @"
   docs\                部署与联调说明
 
 【默认账号】（仅空库首次启动写入）
-  root / root666       开发人员
-  admin / 88888888     管理人员
-  operator / operator123  实验人员
+  admin / 88888888       系统管理员（账号维护 + 设置）
+  operator / operator123 业务人员（原料/配方/称量/工单）
+
+【角色说明】
+  登录无需选手动身份；系统管理员管账号，业务人员管主数据与称量窗。
+  升级旧库时：admin→系统管理员，operator→业务人员，删除 root。
 
 【硬件】
   电子天平：系统设置中选择 COM 口 → 保存并连接
@@ -172,8 +175,8 @@ $readme = @"
   详见 docs\TECH.md 与 docs\hardware-checklist.md
 
 【迁移旧数据】
-  退出程序后，将旧版 data\material_mgmt.db 覆盖到本目录 data\ 下。
-  详见 docs\DEPLOY.md
+  退出程序后，将旧版 data\material_mgmt.db 覆盖到本目录 data\ 下；
+  首次启动会自动做 v4.2 角色迁移。详见 docs\DEPLOY.md
 
 打包时间：$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 "@

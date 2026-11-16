@@ -6,7 +6,9 @@ using MaterialMgmt.App.Themes;
 using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Codes;
 using MaterialMgmt.Core.Entities;
+using MaterialMgmt.Core.Formulas;
 using MaterialMgmt.Infrastructure.Data;
+using MaterialMgmt.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace MaterialMgmt.App.Views.Panels;
@@ -16,6 +18,7 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
     private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
     private readonly IAuthService _auth;
     private readonly IAuditLog _audit;
+    private readonly FormulaService _formulas;
     private readonly NavigationService _nav;
     private readonly DeviceHub _devices;
     private readonly DataGrid _grid = new();
@@ -26,11 +29,12 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
     private bool _createDialogOpen;
 
     public FormulasPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth,
-        IAuditLog audit, NavigationService nav, DeviceHub devices)
+        IAuditLog audit, FormulaService formulas, NavigationService nav, DeviceHub devices)
     {
         _dbFactory = dbFactory;
         _auth = auth;
         _audit = audit;
+        _formulas = formulas;
         _nav = nav;
         _devices = devices;
         Build();
@@ -47,9 +51,10 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
     private void Build()
     {
         var root = new DockPanel { Margin = new Thickness(20) };
-        var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
+        var bar = new WrapPanel { Margin = new Thickness(0, 0, 0, 12) };
         DockPanel.SetDock(bar, Dock.Top);
-        bar.Children.Add(new TextBlock { Text = "配方管理", FontSize = 20, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 16, 0), VerticalAlignment = VerticalAlignment.Center });
+        bar.Children.Add(new TextBlock { Text = "配方管理", FontSize = 20, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 16, 8), VerticalAlignment = VerticalAlignment.Center });
+        _filter.Margin = new Thickness(0, 0, 8, 8);
         bar.Children.Add(_filter);
         _filter.TextChanged += (_, _) => { _pager.Reset(); Render(); };
         var add = UiTheme.PrimaryButton("新建配方");
@@ -58,12 +63,15 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
         var edit = UiTheme.PrimaryButton("编辑步骤");
         edit.Click += (_, _) =>
         {
-            if (GridKit.Current<Formula>(_grid) is { } row)
-                _nav.Navigate(AppPage.FormulaEditor, v => ((FormulaEditorPanel)v).Load(row.Item.Id));
+            if (CurrentFormula() is { } row)
+                _nav.Navigate(AppPage.FormulaEditor, v => ((FormulaEditorPanel)v).Load(row.Id));
             else
                 MessageBox.Show("请先选择一条配方", "提示");
         };
         bar.Children.Add(edit);
+        var copy = UiTheme.GhostButton("复制配方");
+        copy.Click += (_, _) => CopySelected();
+        bar.Children.Add(copy);
         var toggle = UiTheme.GhostButton("启用/停用");
         toggle.Click += (_, _) => ToggleActive();
         bar.Children.Add(toggle);
@@ -198,20 +206,102 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
         UiFeedback.Success($"已更新 {n} 个配方的启用状态。");
     }
 
+    private Formula? CurrentFormula()
+    {
+        var checkedItems = GridKit.CheckedItems<Formula>(_grid);
+        if (checkedItems.Count == 1) return checkedItems[0];
+        return GridKit.Current<Formula>(_grid)?.Item;
+    }
+
+    private void CopySelected()
+    {
+        if (CurrentFormula() is not { } src)
+        {
+            MessageBox.Show("请先选择一条要复制的配方（勾选一条或单击选中）", "提示");
+            return;
+        }
+
+        var nameBox = new TextBox
+        {
+            Text = FormulaClone.DefaultCopyName(src.Name),
+            Margin = new Thickness(0, 4, 0, 10)
+        };
+        string previewCode;
+        using (var db = _dbFactory.CreateDbContext())
+        {
+            var last = db.Formulas.OrderByDescending(f => f.Id).Select(f => (int?)f.Id).FirstOrDefault();
+            previewCode = CodeService.PreviewNext(CodeKind.Formula, last);
+        }
+
+        var dlg = new Window
+        {
+            Title = "复制配方",
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            MinHeight = 220,
+            Owner = Window.GetWindow(this),
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        var stack = new StackPanel { Margin = new Thickness(20) };
+        stack.Children.Add(UiTheme.Hint($"源配方：{src.Code}  {src.Name}"));
+        stack.Children.Add(new TextBlock { Text = "新名称 *", Margin = new Thickness(0, 8, 0, 0) });
+        stack.Children.Add(nameBox);
+        stack.Children.Add(UiTheme.Hint($"将自动分配编码（预览 {previewCode}），并复制全部称量步骤"));
+        var ok = UiTheme.PrimaryButton("创建副本并编辑");
+        ok.Margin = new Thickness(0, 12, 0, 0);
+        ok.Click += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(nameBox.Text))
+            {
+                MessageBox.Show(dlg, "请填写新名称");
+                return;
+            }
+            try
+            {
+                var newId = _formulas.Clone(src.Id, nameBox.Text, _auth.CurrentUser?.DisplayName);
+                using var db = _dbFactory.CreateDbContext();
+                var created = db.Formulas.First(f => f.Id == newId);
+                _audit.Log("formula", $"复制配方 {src.Code} → {created.Code}（{created.Name}）",
+                    _auth.CurrentUser?.Username ?? "");
+                dlg.DialogResult = true;
+                dlg.Close();
+                Refresh();
+                UiFeedback.Success($"已创建 {created.Code}，可继续调整步骤。");
+                _nav.Navigate(AppPage.FormulaEditor, v => ((FormulaEditorPanel)v).Load(newId));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(dlg, ex.Message, "复制失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        };
+        stack.Children.Add(ok);
+        dlg.Content = stack;
+        dlg.ShowDialog();
+    }
+
     private void DeleteSelected()
     {
         var list = GridKit.CheckedItems<Formula>(_grid);
         if (list.Count == 0 && GridKit.Current<Formula>(_grid)?.Item is { } one) list = new List<Formula> { one };
         if (list.Count == 0) { MessageBox.Show("请先勾选要删除的配方"); return; }
-        if (MessageBox.Show($"确认删除 {list.Count} 个配方？", "确认", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+
         using var db = _dbFactory.CreateDbContext();
+        var blocked = list.Where(f => db.WorkOrders.Any(w => w.FormulaId == f.Id)).ToList();
+        if (blocked.Count > 0)
+        {
+            var lines = string.Join("\n", blocked.Select(f => $"· {f.Code}  {f.Name}"));
+            MessageBox.Show(
+                $"以下配方已有工单，无法删除（整批中止，未删除任何项）：\n{lines}",
+                "无法删除", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (MessageBox.Show($"确认删除 {list.Count} 个配方及其步骤？此操作不可恢复。", "确认",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
+
         foreach (var f in list)
         {
-            if (db.WorkOrders.Any(w => w.FormulaId == f.Id))
-            {
-                MessageBox.Show($"配方 {f.Code} 已有工单，无法删除");
-                return;
-            }
             var entity = db.Formulas.Include(x => x.Items).First(x => x.Id == f.Id);
             db.FormulaItems.RemoveRange(entity.Items);
             db.Formulas.Remove(entity);

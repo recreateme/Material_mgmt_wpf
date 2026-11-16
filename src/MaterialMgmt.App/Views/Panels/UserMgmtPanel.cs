@@ -33,7 +33,7 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
         var root = new DockPanel { Margin = new Thickness(20) };
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
         DockPanel.SetDock(bar, Dock.Top);
-        bar.Children.Add(new TextBlock { Text = "用户管理", FontSize = 20, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 16, 0), VerticalAlignment = VerticalAlignment.Center });
+        bar.Children.Add(new TextBlock { Text = "业务人员账号", FontSize = 20, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 16, 0), VerticalAlignment = VerticalAlignment.Center });
         var add = UiTheme.PrimaryButton("新增"); add.Click += (_, _) => Edit(null); bar.Children.Add(add);
         var edit = UiTheme.PrimaryButton("编辑"); edit.Click += (_, _) => { if (CurrentRow() is { } r) Edit(r); }; bar.Children.Add(edit);
         var reset = UiTheme.GhostButton("重置密码"); reset.Click += (_, _) => ResetPw(); bar.Children.Add(reset);
@@ -51,12 +51,8 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
         root.Children.Add(bar); root.Children.Add(_grid); Content = root;
     }
 
-    private IQueryable<User> Scope(MaterialMgmtDbContext db)
-    {
-        var me = _auth.CurrentUser!;
-        if (me.IsRoot()) return db.Users.Where(u => u.Role != Roles.Root || u.Id == me.Id);
-        return db.Users.Where(u => u.Role == Roles.Operator);
-    }
+    private IQueryable<User> Scope(MaterialMgmtDbContext db) =>
+        db.Users.Where(u => u.Role == Roles.Business);
 
     private void Refresh()
     {
@@ -67,24 +63,21 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
     private void Edit(UserRow? row)
     {
         var me = _auth.CurrentUser!;
+        if (!me.IsSystemAdmin())
+        {
+            MessageBox.Show("仅系统管理员可维护业务人员账号");
+            return;
+        }
+
         var userBox = new TextBox { Height = 30, Text = row?.Username ?? "", IsEnabled = row is null, Margin = new Thickness(0, 4, 0, 8) };
         var display = new TextBox { Height = 30, Text = row?.DisplayName ?? "", Margin = new Thickness(0, 4, 0, 8) };
-        var role = new ComboBox { Margin = new Thickness(0, 4, 0, 8), DisplayMemberPath = nameof(RoleOption.Label) };
-        if (me.IsRoot())
-        {
-            role.Items.Add(new RoleOption(Roles.Admin));
-            role.Items.Add(new RoleOption(Roles.Operator));
-        }
-        else role.Items.Add(new RoleOption(Roles.Operator));
-        role.SelectedItem = role.Items.Cast<RoleOption>().FirstOrDefault(x => x.Value == (row?.Role ?? Roles.Operator))
-                            ?? role.Items.Cast<RoleOption>().First();
         var pw = new PasswordBox { Height = 30, Margin = new Thickness(0, 4, 0, 8), Visibility = row is null ? Visibility.Visible : Visibility.Collapsed };
 
-        var dlg = new Window { Title = row is null ? "新增用户" : "编辑用户", Width = 400, SizeToContent = SizeToContent.Height, MinHeight = 300, Owner = Window.GetWindow(this), WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        var dlg = new Window { Title = row is null ? "新增业务人员" : "编辑业务人员", Width = 400, SizeToContent = SizeToContent.Height, MinHeight = 260, Owner = Window.GetWindow(this), WindowStartupLocation = WindowStartupLocation.CenterOwner };
         var stack = new StackPanel { Margin = new Thickness(20) };
         stack.Children.Add(new TextBlock { Text = "用户名" }); stack.Children.Add(userBox);
         stack.Children.Add(new TextBlock { Text = "显示名" }); stack.Children.Add(display);
-        stack.Children.Add(new TextBlock { Text = "角色" }); stack.Children.Add(role);
+        stack.Children.Add(UiTheme.Hint("角色固定为业务人员（可管理原料/配方/称量）"));
         if (row is null) { stack.Children.Add(new TextBlock { Text = "初始密码" }); stack.Children.Add(pw); }
         var ok = UiTheme.PrimaryButton("保存");
         ok.Click += (_, _) =>
@@ -98,29 +91,30 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
                     { MessageBox.Show(dlg, "请填写用户名和密码"); return; }
                     if (pw.Password.Length < 6)
                     { MessageBox.Show(dlg, "密码至少 6 位"); return; }
+                    var name = userBox.Text.Trim();
                     db.Users.Add(new User
                     {
-                        Username = userBox.Text.Trim(),
-                        DisplayName = string.IsNullOrWhiteSpace(display.Text) ? userBox.Text.Trim() : display.Text.Trim(),
-                        Role = ((RoleOption)role.SelectedItem!).Value,
+                        Username = name,
+                        DisplayName = string.IsNullOrWhiteSpace(display.Text) ? name : display.Text.Trim(),
+                        Role = Roles.Business,
                         PasswordHash = _auth.HashPassword(pw.Password),
                         IsActive = true,
                         CreatedAt = DateTime.Now
                     });
-                    _audit.Log("user", $"创建用户 {userBox.Text.Trim()}", me.Username);
+                    _audit.Log("user", $"创建业务人员 {name}", me.Username);
                 }
                 else
                 {
                     var u = db.Users.First(x => x.Id == row.Id);
-                    if (u.Id == me.Id && ((RoleOption)role.SelectedItem!).Value != u.Role)
-                    { MessageBox.Show(dlg, "不能修改自己的角色"); return; }
+                    if (u.Role != Roles.Business)
+                    { MessageBox.Show(dlg, "只能编辑业务人员账号"); return; }
                     u.DisplayName = display.Text.Trim();
-                    u.Role = ((RoleOption)role.SelectedItem!).Value;
                     u.UpdatedAt = DateTime.Now;
-                    _audit.Log("user", $"编辑用户 {u.Username}", me.Username);
+                    _audit.Log("user", $"编辑业务人员 {u.Username}", me.Username);
                 }
                 db.SaveChanges();
                 dlg.DialogResult = true; dlg.Close(); Refresh();
+                UiFeedback.Success(row is null ? "业务人员已创建。" : "已保存。");
             }
             catch (Exception ex) { MessageBox.Show(dlg, ex.Message); }
         };
@@ -330,8 +324,4 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
         public string ActiveDisplay { get; }
     }
 
-    private sealed record RoleOption(string Value)
-    {
-        public string Label => RoleLabels.ToDisplay(Value);
-    }
 }

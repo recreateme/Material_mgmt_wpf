@@ -209,7 +209,7 @@ var list = db.Materials.OrderByDescending(m => m.Id).ToList();
 
 ## 10. 建议的练习路线（1～2 天）
 
-1. **跑起来**：`dotnet run --project MaterialMgmt.App`，用 admin / operator 各登一次。  
+1. **跑起来**：`dotnet run --project MaterialMgmt.App`，用 `admin`（系统管理员）与 `operator`（业务人员）各登一次；业务人员可开称量窗。  
 2. **改文案**：改 `WeighSessionPanel` 某句提示，体会 UI 刷新。  
 3. **加一列**：原材料表加一列「描述长度」或只读字段（`GridKit.Text`）。  
 4. **跟一次扫码**：设置页模拟扫码，断点打在 `OnBarcode`。  

@@ -28,6 +28,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAuthService, AuthService>();
         services.AddSingleton<DbBootstrap>();
         services.AddSingleton<OrderService>();
+        services.AddSingleton<FormulaService>();
         services.AddSingleton<ExportService>();
 
         return services;

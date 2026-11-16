@@ -13,23 +13,23 @@ namespace MaterialMgmt.App.Views.Dialogs;
 public partial class LoginWindow : Window
 {
     private readonly IAuthService _auth;
+    private readonly IAuditLog? _audit;
 
     public CurrentUser? LoggedInUser { get; private set; }
 
-    public LoginWindow(IAuthService auth)
+    public LoginWindow(IAuthService auth, IAuditLog? audit = null)
     {
         _auth = auth;
+        _audit = audit;
         Title = "原料管理系统 — 登录";
         Width = 460;
-        Height = 560;
+        Height = 480;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ResizeMode = ResizeMode.NoResize;
         Background = Brushes.Transparent;
         BuildUi();
     }
 
-    private RadioButton _operatorRole = null!;
-    private RadioButton _adminRole = null!;
     private TextBox _user = null!;
     private PasswordBox _pass = null!;
     private TextBlock _error = null!;
@@ -85,20 +85,7 @@ public partial class LoginWindow : Window
             Margin = new Thickness(0, 6, 0, 22)
         });
 
-        stack.Children.Add(UiTheme.FieldLabel("登录身份"));
-        stack.Children.Add(UiTheme.Hint("请按账号实际身份选择，选错将无法登录"));
-        var roleRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 14) };
-        _operatorRole = new RadioButton
-        {
-            Content = "操作员",
-            GroupName = "LoginRole",
-            IsChecked = true,
-            Margin = new Thickness(0, 0, 24, 0)
-        };
-        _adminRole = new RadioButton { Content = "管理员", GroupName = "LoginRole" };
-        roleRow.Children.Add(_operatorRole);
-        roleRow.Children.Add(_adminRole);
-        stack.Children.Add(roleRow);
+        stack.Children.Add(UiTheme.Hint("输入账号密码登录；权限由账号角色决定"));
 
         stack.Children.Add(UiTheme.FieldLabel("用户名"));
         _user = new TextBox { Margin = new Thickness(0, 0, 0, 14) };
@@ -171,9 +158,6 @@ public partial class LoginWindow : Window
         };
     }
 
-    private string SelectedPortalRole() =>
-        _adminRole.IsChecked == true ? Roles.Admin : Roles.Operator;
-
     private void DoLogin()
     {
         var username = _user.Text.Trim();
@@ -187,21 +171,13 @@ public partial class LoginWindow : Window
         var user = _auth.Login(username, password);
         if (user is null)
         {
+            _audit?.Log("auth", $"登录失败 username={username}");
             ShowError("用户名或密码错误，或账号已禁用");
             Shake();
             return;
         }
 
-        if (!user.IsRoot() && user.Role != SelectedPortalRole())
-        {
-            _auth.Logout();
-            ShowError(user.Role == Roles.Admin
-                ? "该账号为管理员，请选择「管理员」"
-                : "该账号为操作员，请选择「操作员」");
-            Shake();
-            return;
-        }
-
+        _audit?.Log("auth", $"登录成功 role={user.Role}", user.Username);
         LoggedInUser = user;
         DialogResult = true;
         Close();
