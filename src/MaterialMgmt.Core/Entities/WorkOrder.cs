@@ -25,6 +25,10 @@ public class WorkOrder
     public string? MixingExceptionNote { get; set; }
     public string? CoatingExceptionNote { get; set; }
 
+    /// <summary>软删除：非空表示已从列表中移除，称重记录仍保留以备追溯。</summary>
+    public DateTime? DeletedAt { get; set; }
+    public string? DeletedBy { get; set; }
+
     public Formula Formula { get; set; } = null!;
     public User? User { get; set; }
     public ICollection<WeightRecord> Records { get; set; } = new List<WeightRecord>();

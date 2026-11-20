@@ -115,14 +115,18 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
         root.Children.Add(_scanHint);
 
         var simRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        simRow.Children.Add(_simCode);
-        var sim = UiTheme.GhostButton("模拟扫码");
-        sim.Click += (_, _) =>
+        // 模拟扫码仅用于设备联调，限系统管理员；称量流程本身也会拒绝模拟扫码
+        if (_auth.CurrentUser?.IsSystemAdmin() == true)
         {
-            if (!string.IsNullOrWhiteSpace(_simCode.Text))
-                _devices.SimulateBarcode(_simCode.Text.Trim());
-        };
-        simRow.Children.Add(sim);
+            simRow.Children.Add(_simCode);
+            var sim = UiTheme.GhostButton("模拟扫码（联调）");
+            sim.Click += (_, _) =>
+            {
+                if (!string.IsNullOrWhiteSpace(_simCode.Text))
+                    _devices.SimulateBarcode(_simCode.Text.Trim());
+            };
+            simRow.Children.Add(sim);
+        }
         var selfCheck = UiTheme.GhostButton("硬件自检");
         selfCheck.Click += (_, _) => RunSelfCheck();
         simRow.Children.Add(selfCheck);

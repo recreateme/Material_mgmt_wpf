@@ -82,7 +82,7 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
 
         _grid.AutoGenerateColumns = false;
         _grid.IsReadOnly = true;
-        _grid.SelectionMode = DataGridSelectionMode.Extended;
+        GridKit.BindSingleActions(_grid, edit, copy);
         _grid.Columns.Add(GridKit.CheckColumn());
         _grid.Columns.Add(GridKit.Text("ID", "Item.Id", 70));
         _grid.Columns.Add(GridKit.Text("编码", "Item.Code", 140, align: TextAlignment.Left));

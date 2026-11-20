@@ -13,6 +13,16 @@ public class WeightRecord
     public bool IsValid { get; set; } = true;
     public string? Note { get; set; }
 
+    // —— 称重当时的快照：配方/原料之后被修改，历史记录与导出仍按当时的限值与名称呈现 ——
+    public double? WeightMinSnapshot { get; set; }
+    public double? WeightMaxSnapshot { get; set; }
+    public string? MaterialCodeSnapshot { get; set; }
+    public string? MaterialNameSnapshot { get; set; }
+
+    // —— 作废留痕：回称时记录作废时间与操作人 ——
+    public DateTime? VoidedAt { get; set; }
+    public string? VoidedBy { get; set; }
+
     public WorkOrder WorkOrder { get; set; } = null!;
     public FormulaItem FormulaItem { get; set; } = null!;
 }

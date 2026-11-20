@@ -27,6 +27,9 @@
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource C.Success}"/>
     <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource C.Warning}"/>
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource C.Danger}"/>
+    <!-- 表格选中：比系统高亮略浅的蓝 + 白字 -->
+    <SolidColorBrush x:Key="GridSelectionBrush" Color="#3B82F6"/>
+    <SolidColorBrush x:Key="GridSelectionTextBrush" Color="#FFFFFF"/>
 
     <FontFamily x:Key="AppFont">Microsoft YaHei UI, Segoe UI</FontFamily>
 
@@ -105,11 +108,23 @@
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="HorizontalContentAlignment" Value="Center"/>
         <Setter Property="EnableRowVirtualization" Value="True"/>
+        <Style.Resources>
+            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#3B82F6"/>
+            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#3B82F6"/>
+            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FFFFFF"/>
+        </Style.Resources>
     </Style>
 
     <Style TargetType="DataGridRow">
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Style.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource GridSelectionBrush}"/>
+                <Setter Property="Foreground" Value="{StaticResource GridSelectionTextBrush}"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <Style TargetType="DataGridColumnHeader">
@@ -154,6 +169,12 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource GridSelectionBrush}"/>
+                <Setter Property="Foreground" Value="{StaticResource GridSelectionTextBrush}"/>
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- 主按钮 -->

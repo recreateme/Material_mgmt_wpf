@@ -71,7 +71,7 @@ public sealed class ExportService
             .Include(w => w.Records)
             .ThenInclude(r => r.FormulaItem)
             .ThenInclude(i => i.Material)
-            .FirstOrDefault(w => w.Id == id);
+            .FirstOrDefault(w => w.Id == id && w.DeletedAt == null);
     }
 
     private static void WriteSheet(IXLWorksheet ws, Core.Entities.WorkOrder wo)
@@ -122,14 +122,15 @@ public sealed class ExportService
         }
         row++;
 
-        foreach (var r in wo.Records.OrderBy(x => x.Timestamp))
+        // 只导出有效记录；限值/名称优先用称重当时的快照，旧记录无快照时退回当前配方
+        foreach (var r in wo.Records.Where(x => x.IsValid).OrderBy(x => x.Timestamp))
         {
             var item = r.FormulaItem;
-            var min = item?.WeightMin ?? 0;
-            var max = item?.WeightMax ?? 0;
+            var min = r.WeightMinSnapshot ?? item?.WeightMin ?? 0;
+            var max = r.WeightMaxSnapshot ?? item?.WeightMax ?? 0;
             ws.Cell(row, 1).Value = item?.Sequence ?? 0;
-            ws.Cell(row, 2).Value = item?.Material?.Code ?? "";
-            ws.Cell(row, 3).Value = item?.Material?.Name ?? "";
+            ws.Cell(row, 2).Value = r.MaterialCodeSnapshot ?? item?.Material?.Code ?? "";
+            ws.Cell(row, 3).Value = r.MaterialNameSnapshot ?? item?.Material?.Name ?? "";
             ws.Cell(row, 4).Value = min;
             ws.Cell(row, 5).Value = max;
             ws.Cell(row, 6).Value = r.ActualWeight;

@@ -134,9 +134,36 @@ public sealed class WorkflowEngine
     }
 
     /// <summary>
-    /// 确认称重。hasExistingValidRecord 由调用方查询后传入（同工单同步骤已有有效记录则拒绝）。
+    /// 秤读数中断（断线 / 长时间无新数据）：已判定合格/超范围的读数不再可信，
+    /// 回到“称重中”并要求等待新读数，防止对过期读数确认。
+    /// </summary>
+    public StepStatus OnReadingLost()
+    {
+        if (State is not (WeighState.Weighing or WeighState.OutOfRange or WeighState.WeightOk))
+            return new StepStatus(State, "");
+
+        State = WeighState.Weighing;
+        _hasEffectiveWeight = false;
+        _lastWeight = 0;
+        return new StepStatus(WeighState.Weighing, "电子秤读数中断，请检查连接，待读数恢复并稳定后再确认", IsError: true);
+    }
+
+    /// <summary>
+    /// 确认称重（一步完成：生成待持久化记录并前进）。仅供不需要“先落库后前进”的场景与测试；
+    /// 生产路径请使用 <see cref="PrepareConfirm"/> + <see cref="CommitConfirm"/>。
     /// </summary>
     public (StepStatus Status, PendingWeightRecord? Record) ConfirmWeight(bool hasExistingValidRecord)
+    {
+        var (status, pending) = PrepareConfirm(hasExistingValidRecord);
+        if (pending is null) return (status, null);
+        return (CommitConfirm(), pending);
+    }
+
+    /// <summary>
+    /// 第一阶段：校验并生成待持久化记录，不改变状态机。
+    /// 调用方须在记录成功落库后再调用 <see cref="CommitConfirm"/>；落库失败则保持原状态，可直接重试。
+    /// </summary>
+    public (StepStatus Status, PendingWeightRecord? Record) PrepareConfirm(bool hasExistingValidRecord)
     {
         if (State != WeighState.WeightOk || CurrentItem is null)
             return (new StepStatus(State, "当前状态无法确认"), null);
@@ -155,22 +182,32 @@ public sealed class WorkflowEngine
             ActualWeight = _lastWeight,
             Timestamp = DateTime.Now
         };
+        return (new StepStatus(State, ""), pending);
+    }
+
+    /// <summary>第二阶段：记录已落库，前进到下一步。</summary>
+    public StepStatus CommitConfirm()
+    {
+        if (State != WeighState.WeightOk || CurrentItem is null)
+            return new StepStatus(State, "当前状态无法确认");
 
         StepIndex++;
         _scannedCode = "";
         _hasEffectiveWeight = false;
 
+        _lastWeight = 0;
+
         if (StepIndex >= _items.Count)
         {
             State = WeighState.Complete;
-            return (new StepStatus(WeighState.Complete, "🎉 所有步骤已完成！"), pending);
+            return new StepStatus(WeighState.Complete, "🎉 所有步骤已完成！");
         }
 
         var next = _items[StepIndex];
         State = WeighState.WaitingScan;
-        return (new StepStatus(
+        return new StepStatus(
             WeighState.WaitingScan,
-            $"步骤 {StepIndex + 1}/{TotalCount}\n请扫描 【{next.Material.Name}】 的条码（{next.Material.Code}）\n目标：{next.WeightMin} ~ {next.WeightMax} g"), pending);
+            $"步骤 {StepIndex + 1}/{TotalCount}\n请扫描 【{next.Material.Name}】 的条码（{next.Material.Code}）\n目标：{next.WeightMin} ~ {next.WeightMax} g");
     }
 
     /// <summary>

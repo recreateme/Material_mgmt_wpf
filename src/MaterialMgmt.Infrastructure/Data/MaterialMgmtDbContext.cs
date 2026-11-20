@@ -113,6 +113,8 @@ public sealed class MaterialMgmtDbContext : DbContext
             e.Property(x => x.CoatingException).HasColumnName("coating_exception");
             e.Property(x => x.MixingExceptionNote).HasColumnName("mixing_exception_note").HasMaxLength(512);
             e.Property(x => x.CoatingExceptionNote).HasColumnName("coating_exception_note").HasMaxLength(512);
+            e.Property(x => x.DeletedAt).HasColumnName("deleted_at");
+            e.Property(x => x.DeletedBy).HasColumnName("deleted_by").HasMaxLength(64);
             e.HasIndex(x => x.ExternalOrderNo);
             e.HasOne(x => x.Formula).WithMany(x => x.WorkOrders).HasForeignKey(x => x.FormulaId);
             e.HasOne(x => x.User).WithMany(x => x.WorkOrders).HasForeignKey(x => x.OperatorId);
@@ -132,6 +134,17 @@ public sealed class MaterialMgmtDbContext : DbContext
             e.Property(x => x.Timestamp).HasColumnName("timestamp").IsRequired();
             e.Property(x => x.IsValid).HasColumnName("is_valid").IsRequired();
             e.Property(x => x.Note).HasColumnName("note").HasMaxLength(256);
+            e.Property(x => x.WeightMinSnapshot).HasColumnName("weight_min_snapshot");
+            e.Property(x => x.WeightMaxSnapshot).HasColumnName("weight_max_snapshot");
+            e.Property(x => x.MaterialCodeSnapshot).HasColumnName("material_code_snapshot").HasMaxLength(64);
+            e.Property(x => x.MaterialNameSnapshot).HasColumnName("material_name_snapshot").HasMaxLength(128);
+            e.Property(x => x.VoidedAt).HasColumnName("voided_at");
+            e.Property(x => x.VoidedBy).HasColumnName("voided_by").HasMaxLength(64);
+            // 同一工单同一步骤至多一条有效记录（数据库层兜底；旧库见 DbBootstrap.EnsureIntegrityAsync）
+            e.HasIndex(x => new { x.WorkOrderId, x.FormulaItemId })
+                .IsUnique()
+                .HasFilter("is_valid = 1")
+                .HasDatabaseName("ux_weight_records_valid");
             e.HasOne(x => x.FormulaItem).WithMany(x => x.WeightRecords).HasForeignKey(x => x.FormulaItemId);
         });
     }

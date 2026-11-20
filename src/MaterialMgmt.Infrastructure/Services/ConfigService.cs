@@ -160,6 +160,10 @@ public sealed class ConfigService : IConfigService
                 sb.Append(kv.Key).Append(" = ").AppendLine(kv.Value);
             sb.AppendLine();
         }
-        File.WriteAllText(_path, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        // 先写临时文件再替换，避免写入中途崩溃/断电导致 settings.ini 被截断
+        var tmp = _path + ".tmp";
+        File.WriteAllText(tmp, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        if (File.Exists(_path)) File.Replace(tmp, _path, null);
+        else File.Move(tmp, _path);
     }
 }

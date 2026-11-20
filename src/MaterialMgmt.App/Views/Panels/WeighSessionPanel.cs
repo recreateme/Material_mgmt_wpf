@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using MaterialMgmt.App.Services;
 using MaterialMgmt.App.Themes;
 using MaterialMgmt.Core.Abstractions;
@@ -90,6 +91,12 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
     private double _liveWeight;
     private bool _liveStable;
     private bool _liveOverload;
+    private DateTime _lastWeightAt = DateTime.MinValue;
+    private bool _readingLost;
+    private readonly DispatcherTimer _watchdog = new() { Interval = TimeSpan.FromMilliseconds(500) };
+
+    /// <summary>秤读数超过该时长未更新即视为过期（ScaleWorker 约 200ms 一帧）。</summary>
+    private static readonly TimeSpan ReadingTimeout = TimeSpan.FromSeconds(1.5);
 
     public WeighSessionPanel(
         IDbContextFactory<MaterialMgmtDbContext> dbFactory,
@@ -108,6 +115,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
         _nav = nav;
         _weigh = weigh;
         Focusable = true;
+        _watchdog.Tick += (_, _) => CheckReadingFresh();
         Build();
     }
 
@@ -130,6 +138,12 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
     public void OnBarcode(string code, bool simulated = false)
     {
         if (_engine is null) return;
+        if (simulated)
+        {
+            // 称量流程只接受真实扫码，模拟扫码不得产生称重记录
+            ApplyStatus(new StepStatus(_engine.State, "称量中不接受模拟扫码，请使用扫码枪扫描原料条码", IsError: true));
+            return;
+        }
         var status = _engine.OnBarcode(code);
         ApplyStatus(status);
         RefreshUi();
@@ -243,24 +257,47 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
     private void AttachScale()
     {
         if (_attached) return;
-        var worker = _devices.GetScaleWorker();
-        if (worker is null) return;
-        worker.WeightUpdated += OnWeight;
+        // 订阅 DeviceHub 的稳定事件：天平重连、重建 ScaleWorker 后无需重新订阅
+        _devices.WeightUpdated += OnWeight;
         _attached = true;
+        _lastWeightAt = DateTime.MinValue;
+        _readingLost = false;
+        _watchdog.Start();
     }
 
     private void DetachScale()
     {
         if (!_attached) return;
-        var worker = _devices.GetScaleWorker();
-        if (worker is not null) worker.WeightUpdated -= OnWeight;
+        _devices.WeightUpdated -= OnWeight;
+        _watchdog.Stop();
         _attached = false;
+    }
+
+    private bool IsReadingStale()
+        => !_devices.IsScaleConnected || DateTime.Now - _lastWeightAt > ReadingTimeout;
+
+    /// <summary>读数过期（断线 / 无新数据）时撤销“合格可确认”状态并给出明确提示。</summary>
+    private void CheckReadingFresh()
+    {
+        if (_engine is null) return;
+        if (_engine.State is not (WeighState.Weighing or WeighState.OutOfRange or WeighState.WeightOk)) return;
+        if (_readingLost || !IsReadingStale()) return;
+
+        _readingLost = true;
+        var status = _engine.OnReadingLost();
+        _liveStable = false;
+        ApplyStatus(status);
+        RefreshUi(keepGuideFromStatus: true, reloadSteps: false);
     }
 
     private void OnWeight(double weight, bool stable, bool overload)
     {
-        Dispatcher.Invoke(() =>
+        // 来自 ScaleWorker 线程；异步投递避免阻塞读数循环 / Stop()
+        Dispatcher.InvokeAsync(() =>
         {
+            if (!_attached) return;
+            _lastWeightAt = DateTime.Now;
+            _readingLost = false;
             _liveWeight = weight;
             _liveStable = stable;
             _liveOverload = overload;
@@ -272,13 +309,16 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
 
             var status = _engine.OnWeightUpdate(weight, stable && !overload);
             ApplyStatus(status);
-            RefreshUi(keepGuideFromStatus: true);
+            // 读数每 200ms 一帧，仅刷新读数/状态，不重查数据库、不重建步骤列表
+            RefreshUi(keepGuideFromStatus: true, reloadSteps: false);
         });
     }
 
     private void RenderWeight()
     {
-        if (_liveOverload)
+        if (_readingLost)
+            _weight.Text = "— g";
+        else if (_liveOverload)
             _weight.Text = $"{_liveWeight:F3} g 超载";
         else
             _weight.Text = $"{_liveWeight:F3} g";
@@ -309,11 +349,14 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
         if (status.State == WeighState.Complete) Finish();
     }
 
-    private void RefreshUi(bool keepGuideFromStatus = false)
+    private void RefreshUi(bool keepGuideFromStatus = false, bool reloadSteps = true)
     {
         if (_engine is null) return;
-        _validItemIds = _orders.GetValidFormulaItemIds(_workOrderId);
-        RebuildStepList();
+        if (reloadSteps)
+        {
+            _validItemIds = _orders.GetValidFormulaItemIds(_workOrderId);
+            RebuildStepList();
+        }
 
         var item = _engine.CurrentItem;
         var weighing = _engine.State is WeighState.Weighing or WeighState.OutOfRange or WeighState.WeightOk;
@@ -440,7 +483,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
         if (MessageBox.Show(tip, "重新称量", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
 
-        var n = _orders.InvalidateValidRecords(_workOrderId, item.Id);
+        var n = _orders.InvalidateValidRecords(_workOrderId, item.Id, _auth.CurrentUser?.Username);
         _audit.Log("order",
             $"工单#{_workOrderId} 回称步骤 item={item.Id}（作废 {n} 条记录）",
             _auth.CurrentUser?.Username ?? "");
@@ -505,18 +548,50 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
         if (_engine is null || _engine.State != WeighState.WeightOk) return;
         var item = _engine.CurrentItem;
         if (item is null) return;
-        var exists = _orders.HasValidRecord(_workOrderId, item.Id);
-        var (status, pending) = _engine.ConfirmWeight(exists);
-        if (pending is not null)
+
+        // 点击瞬间再校验一次读数新鲜度，避免对断线前的旧读数确认
+        if (IsReadingStale())
         {
-            _orders.SavePendingWeight(pending.WorkOrderId, pending.FormulaItemId,
-                pending.BarcodeScanned, pending.ActualWeight, pending.Timestamp);
-            _audit.Log("order", $"工单#{_workOrderId} 确认步骤 item={pending.FormulaItemId} w={pending.ActualWeight:F3}",
-                _auth.CurrentUser?.Username ?? "");
+            CheckReadingFresh();
+            return;
         }
 
-        if (status.State != WeighState.Complete)
-            status = _engine.SkipWhileCompleted(id => _orders.HasValidRecord(_workOrderId, id));
+        StepStatus status;
+        try
+        {
+            var exists = _orders.HasValidRecord(_workOrderId, item.Id);
+            var (prepared, pending) = _engine.PrepareConfirm(exists);
+            if (pending is null)
+            {
+                ApplyStatus(prepared);
+                return;
+            }
+
+            // 先落库，成功后才前进；失败则保持当前步骤，可直接重试
+            _orders.SavePendingWeight(pending.WorkOrderId, pending.FormulaItemId,
+                pending.BarcodeScanned, pending.ActualWeight, pending.Timestamp);
+            status = _engine.CommitConfirm();
+
+            try
+            {
+                _audit.Log("order", $"工单#{_workOrderId} 确认步骤 item={pending.FormulaItemId} w={pending.ActualWeight:F3}",
+                    _auth.CurrentUser?.Username ?? "");
+            }
+            catch { /* 审计失败不应影响已落库的称重记录 */ }
+
+            // 记录已落库、状态机已前进；跳过后续已有有效记录的步骤失败时不回滚，保留当前进度
+            if (status.State != WeighState.Complete)
+            {
+                try { status = _engine.SkipWhileCompleted(id => _orders.HasValidRecord(_workOrderId, id)); }
+                catch { /* 下次 RefreshUi 会按数据库状态呈现 */ }
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"保存称重记录失败，当前步骤未前进，请重试。\n\n{ex.Message}", "保存失败",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
 
         ApplyStatus(status);
         RefreshUi();

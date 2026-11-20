@@ -152,4 +152,42 @@ public class WorkflowEngineTests
         Assert.Equal(WeighState.WaitingScan, st.State);
         Assert.Equal("MAT-000003", eng.CurrentItem!.Material.Code);
     }
+
+    [Fact]
+    public void ReadingLost_RevokesWeightOk_AndBlocksConfirm()
+    {
+        var eng = new WorkflowEngine(new[] { Item(1, "MAT-000001", "A", 1.0, 2.0, 1) }, 10);
+        eng.OnBarcode("MAT-000001");
+        eng.OnWeightUpdate(1.5, true);
+        Assert.Equal(WeighState.WeightOk, eng.State);
+
+        var st = eng.OnReadingLost();
+        Assert.True(st.IsError);
+        Assert.Equal(WeighState.Weighing, eng.State);
+        var (_, pending) = eng.PrepareConfirm(false);
+        Assert.Null(pending); // 读数过期后不可确认
+
+        // 读数恢复且稳定合格后才能再次确认
+        Assert.Equal(WeighState.WeightOk, eng.OnWeightUpdate(1.5, true).State);
+    }
+
+    [Fact]
+    public void PrepareConfirm_DoesNotAdvance_UntilCommit()
+    {
+        var items = new[] { Item(1, "MAT-000001", "A", 1, 2, 1), Item(2, "MAT-000002", "B", 1, 2, 2) };
+        var eng = new WorkflowEngine(items, 10);
+        eng.OnBarcode("MAT-000001");
+        eng.OnWeightUpdate(1.5, true);
+
+        var (_, pending) = eng.PrepareConfirm(false);
+        Assert.NotNull(pending);
+        Assert.Equal(1.5, pending!.ActualWeight);
+        // 模拟落库失败：状态机未前进，可直接重试
+        Assert.Equal(0, eng.StepIndex);
+        Assert.Equal(WeighState.WeightOk, eng.State);
+
+        var next = eng.CommitConfirm();
+        Assert.Equal(1, eng.StepIndex);
+        Assert.Equal(WeighState.WaitingScan, next.State);
+    }
 }

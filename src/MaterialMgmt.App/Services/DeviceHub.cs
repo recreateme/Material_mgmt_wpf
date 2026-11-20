@@ -26,6 +26,12 @@ public sealed class DeviceHub : IDisposable
     public event Action? ScannerStatusChanged;
     public event Action<string, bool>? BarcodeRouted;
 
+    /// <summary>
+    /// 稳定的称重事件（weight, stable, overload）：不随 ScaleWorker 重建而失效，
+    /// 在 ScaleWorker 线程触发，订阅方自行切换到 UI 线程。
+    /// </summary>
+    public event Action<double, bool, bool>? WeightUpdated;
+
     /// <summary>解析当前应接收扫码的页面处理器（主窗/称量窗）。</summary>
     public Func<IBarcodeHandler?>? ResolveBarcodeHandler { get; set; }
 
@@ -144,10 +150,16 @@ public sealed class DeviceHub : IDisposable
     public void BeginAutoConnectAfterLogin(IConfigService config)
     {
         _userDisconnected = false;
-        if (!config.AutoConnect)
-            config.AutoConnect = true;
+        // 尊重“登录后自动连接”配置：关闭时不探测串口（探测会向所有 COM 口写入 Modbus 帧）
         ConfigureAutoReconnect(config);
-        BeginDiscoverAndConnect(config);
+        if (config.AutoConnect)
+        {
+            if (!string.IsNullOrWhiteSpace(config.SerialPort) &&
+                ScaleWorker.ListPorts().Any(p => string.Equals(p, config.SerialPort, StringComparison.OrdinalIgnoreCase)))
+                ConnectScale(config.SerialPort, config.SerialBaud, fromUser: false);
+            else
+                BeginDiscoverAndConnect(config);
+        }
         ApplyScannerConfig(config);
     }
 
@@ -263,7 +275,14 @@ public sealed class DeviceHub : IDisposable
         _preferredPort = port;
         try
         {
-            _scale = new ScaleWorker(port, baud);
+            var worker = new ScaleWorker(port, baud);
+            _scale = worker;
+            // 仅转发当前 worker 的读数，避免已被替换的旧 worker 残留事件串入
+            worker.WeightUpdated += (w, stable, overload) =>
+            {
+                if (ReferenceEquals(_scale, worker))
+                    WeightUpdated?.Invoke(w, stable, overload);
+            };
             _scale.Connected += () =>
             {
                 ScaleLastError = "";
@@ -330,13 +349,17 @@ public sealed class DeviceHub : IDisposable
             .Where(p => !IsScannerPort(p, config))
             .ToList();
 
-        if (!string.IsNullOrWhiteSpace(preferred) &&
-            ports.Any(p => string.Equals(p, preferred, StringComparison.OrdinalIgnoreCase)))
+        if (!string.IsNullOrWhiteSpace(preferred))
         {
-            ConnectScale(preferred, baud, fromUser: false);
+            // 已配置秤口：只等待该口出现再连接，不对其他 COM 口发送探测帧
+            if (ports.Any(p => string.Equals(p, preferred, StringComparison.OrdinalIgnoreCase)))
+                ConnectScale(preferred, baud, fromUser: false);
+            else
+                ScheduleRetry();
             return;
         }
 
+        // 未配置秤口：才做全口探测，且退避到 30 秒一次
         BeginDiscoverAndConnect(config);
     }
 
@@ -425,7 +448,7 @@ public sealed class DeviceHub : IDisposable
                         ScaleLastError = ScaleWorker.ListPorts().Count == 0
                             ? "未发现串口设备，请检查电子秤连接"
                             : "未识别到电子秤，将自动重试";
-                        ScheduleRetry();
+                        ScheduleRetry(30);
                         ScaleStatusChanged?.Invoke();
                         return;
                     }
@@ -452,7 +475,7 @@ public sealed class DeviceHub : IDisposable
         });
     }
 
-    private void ScheduleRetry() => _retryAfter = DateTime.Now.AddSeconds(5);
+    private void ScheduleRetry(int seconds = 5) => _retryAfter = DateTime.Now.AddSeconds(seconds);
 
     public void Dispose()
     {

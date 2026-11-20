@@ -3,6 +3,8 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
 using MaterialMgmt.App.Themes;
 
 namespace MaterialMgmt.App.Controls;
@@ -138,8 +140,26 @@ public static class GridKit
 
     public static void SetAll(DataGrid grid, bool selected)
     {
-        foreach (var row in grid.Items.OfType<ISelectable>())
-            row.IsSelected = selected;
+        var state = GetLinkState(grid);
+        state.Syncing = true;
+        try
+        {
+            foreach (var row in grid.Items.OfType<ISelectable>())
+                row.IsSelected = selected;
+
+            grid.SelectedItems.Clear();
+            if (selected)
+            {
+                foreach (var item in grid.Items)
+                    grid.SelectedItems.Add(item);
+            }
+        }
+        finally
+        {
+            state.Syncing = false;
+        }
+
+        state.OnSelectionChanged?.Invoke();
     }
 
     public static void AddSelectButtons(Panel bar, DataGrid grid)
@@ -150,5 +170,126 @@ public static class GridKit
         none.Click += (_, _) => SetAll(grid, false);
         bar.Children.Add(all);
         bar.Children.Add(none);
+    }
+
+    /// <summary>
+    /// 高亮集 ↔ 勾选集双向同步；勾选框单击只切换当前行（不打乱其它已选）。
+    /// </summary>
+    public static void EnableLinkedSelection(DataGrid grid, Action? onSelectionChanged = null)
+    {
+        var state = GetLinkState(grid);
+        state.OnSelectionChanged = onSelectionChanged;
+
+        if (state.Hooked) return;
+        state.Hooked = true;
+
+        grid.SelectionMode = DataGridSelectionMode.Extended;
+        grid.SelectionUnit = DataGridSelectionUnit.FullRow;
+
+        grid.SelectionChanged += (_, _) =>
+        {
+            if (state.Syncing) return;
+            state.Syncing = true;
+            try
+            {
+                var selected = new HashSet<object>(grid.SelectedItems.Cast<object>());
+                foreach (var row in grid.Items.OfType<ISelectable>())
+                    row.IsSelected = selected.Contains(row);
+            }
+            finally
+            {
+                state.Syncing = false;
+            }
+
+            state.OnSelectionChanged?.Invoke();
+        };
+
+        // 点勾选框：自行切换勾选与 SelectedItems，阻止 DataGrid 把它当成「只选这一行」
+        grid.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler((_, e) =>
+        {
+            if (FindAncestor<CheckBox>(e.OriginalSource as DependencyObject) is not { } cb)
+                return;
+            if (FindRowItem(cb, grid) is not { } rowObj)
+                return;
+
+            e.Handled = true;
+            cb.Focus();
+
+            state.Syncing = true;
+            try
+            {
+                if (rowObj is ISelectable sel)
+                {
+                    sel.IsSelected = !sel.IsSelected;
+                    if (sel.IsSelected)
+                    {
+                        if (!grid.SelectedItems.Contains(rowObj))
+                            grid.SelectedItems.Add(rowObj);
+                    }
+                    else
+                    {
+                        grid.SelectedItems.Remove(rowObj);
+                    }
+                }
+            }
+            finally
+            {
+                state.Syncing = false;
+            }
+
+            state.OnSelectionChanged?.Invoke();
+        }), handledEventsToo: true);
+    }
+
+    /// <summary>多选时禁用单条入口；恰 1 条时启用。</summary>
+    public static void BindSingleActions(DataGrid grid, params UIElement[] singleActions)
+    {
+        void Update()
+        {
+            var enable = grid.SelectedItems.Count == 1;
+            foreach (var el in singleActions)
+                el.IsEnabled = enable;
+        }
+
+        EnableLinkedSelection(grid, Update);
+        Update();
+    }
+
+    public static int SelectedCount(DataGrid grid) => grid.SelectedItems.Count;
+
+    private static T? FindAncestor<T>(DependencyObject? current) where T : class
+    {
+        while (current != null)
+        {
+            if (current is T match) return match;
+            current = VisualTreeHelper.GetParent(current);
+        }
+        return null;
+    }
+
+    private static object? FindRowItem(DependencyObject from, DataGrid grid)
+    {
+        var row = FindAncestor<DataGridRow>(from);
+        return row?.Item ?? (from as FrameworkElement)?.DataContext;
+    }
+
+    private static readonly DependencyProperty LinkStateProperty =
+        DependencyProperty.RegisterAttached(
+            "LinkState", typeof(LinkState), typeof(GridKit), new PropertyMetadata(null));
+
+    private static LinkState GetLinkState(DataGrid grid)
+    {
+        if (grid.GetValue(LinkStateProperty) is LinkState existing)
+            return existing;
+        var created = new LinkState();
+        grid.SetValue(LinkStateProperty, created);
+        return created;
+    }
+
+    private sealed class LinkState
+    {
+        public bool Hooked;
+        public bool Syncing;
+        public Action? OnSelectionChanged;
     }
 }

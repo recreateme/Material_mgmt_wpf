@@ -33,11 +33,60 @@ public sealed class DbBootstrap
         Directory.CreateDirectory(_paths.ConfigDir);
         Directory.CreateDirectory(_paths.LogsDir);
 
+        // 任何迁移 / 种子写入之前先备份，迁移失败时可回滚到启动前状态
+        await BackupAsync("startup", ct);
+
         await using var db = await _factory.CreateDbContextAsync(ct);
         await EnsurePragmasAsync(db, ct);
         await EnsureSchemaAsync(db, ct);
+        await EnsureIntegrityAsync(db, ct);
         await SeedDefaultsAsync(db, ct);
         _logger.LogInformation("数据库初始化完成：{Path}", _paths.DatabasePath);
+    }
+
+    /// <summary>备份保留份数（每次启动一份）。</summary>
+    private const int BackupKeep = 14;
+
+    /// <summary>
+    /// 用 SQLite VACUUM INTO 生成一致性快照到 data/backup/。失败只记日志，不阻断启动。
+    /// 返回备份文件路径；库不存在 / 为空 / 失败时返回 null。
+    /// </summary>
+    public async Task<string?> BackupAsync(string reason, CancellationToken ct = default)
+    {
+        try
+        {
+            var src = _paths.DatabasePath;
+            if (!File.Exists(src) || new FileInfo(src).Length == 0) return null;
+
+            var dir = Path.Combine(_paths.DataDir, "backup");
+            Directory.CreateDirectory(dir);
+            var target = Path.Combine(dir, $"material_mgmt_{DateTime.Now:yyyyMMdd_HHmmss}_{reason}.db");
+            if (File.Exists(target)) return null;
+
+            await using (var conn = new SqliteConnection($"Data Source={src};Pooling=False"))
+            {
+                await conn.OpenAsync(ct);
+                await using var cmd = conn.CreateCommand();
+                // 路径中的单引号需转义；VACUUM INTO 不支持参数绑定
+                cmd.CommandText = $"VACUUM INTO '{target.Replace("'", "''")}'";
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+            _logger.LogInformation("数据库已备份：{Path}", target);
+
+            var old = new DirectoryInfo(dir).GetFiles("material_mgmt_*.db")
+                .OrderByDescending(f => f.Name)
+                .Skip(BackupKeep);
+            foreach (var f in old)
+            {
+                try { f.Delete(); } catch { /* 忽略清理失败 */ }
+            }
+            return target;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "数据库备份失败（已忽略，不影响启动）");
+            return null;
+        }
     }
 
     public async Task ShutdownAsync()
@@ -59,8 +108,8 @@ public sealed class DbBootstrap
 
     private static async Task EnsurePragmasAsync(MaterialMgmtDbContext db, CancellationToken ct)
     {
-        await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", ct);
-        await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys=ON;", ct);
+        await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;", cancellationToken: ct);
+        await db.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys=ON;", cancellationToken: ct);
     }
 
     private async Task EnsureSchemaAsync(MaterialMgmtDbContext db, CancellationToken ct)
@@ -125,20 +174,79 @@ public sealed class DbBootstrap
         Need("coating_exception_note", "coating_exception_note VARCHAR(512)");
 
         foreach (var sql in alters)
-            await db.Database.ExecuteSqlRawAsync(sql, ct);
+            await db.Database.ExecuteSqlRawAsync(sql, cancellationToken: ct);
+
+        // 软删除列
+        var woCols = await GetColumnsAsync(db, "work_orders", ct);
+        if (!woCols.Contains("deleted_at"))
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE work_orders ADD COLUMN deleted_at DATETIME", cancellationToken: ct);
+        if (!woCols.Contains("deleted_by"))
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE work_orders ADD COLUMN deleted_by VARCHAR(64)", cancellationToken: ct);
+
+        // 称重记录：限值/原料快照 + 作废留痕
+        var wrCols = await GetColumnsAsync(db, "weight_records", ct);
+        async Task AddWr(string col, string ddl)
+        {
+            if (!wrCols.Contains(col))
+                await db.Database.ExecuteSqlRawAsync($"ALTER TABLE weight_records ADD COLUMN {ddl}", cancellationToken: ct);
+        }
+        await AddWr("weight_min_snapshot", "weight_min_snapshot REAL");
+        await AddWr("weight_max_snapshot", "weight_max_snapshot REAL");
+        await AddWr("material_code_snapshot", "material_code_snapshot VARCHAR(64)");
+        await AddWr("material_name_snapshot", "material_name_snapshot VARCHAR(128)");
+        await AddWr("voided_at", "voided_at DATETIME");
+        await AddWr("voided_by", "voided_by VARCHAR(64)");
 
         var fcols = await GetColumnsAsync(db, "formulas", ct);
         if (!fcols.Contains("code"))
-            await db.Database.ExecuteSqlRawAsync("ALTER TABLE formulas ADD COLUMN code VARCHAR(64)", ct);
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE formulas ADD COLUMN code VARCHAR(64)", cancellationToken: ct);
+    }
+
+    /// <summary>
+    /// 数据完整性兜底：对旧记录回填快照（取当前配方限值，尽力而为），
+    /// 并创建“同工单同步骤至多一条有效记录”的部分唯一索引。
+    /// 若旧数据已存在重复有效记录导致建索引失败，只记警告，不阻断启动。
+    /// </summary>
+    private async Task EnsureIntegrityAsync(MaterialMgmtDbContext db, CancellationToken ct)
+    {
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(@"
+UPDATE weight_records SET
+  weight_min_snapshot = (SELECT fi.weight_min FROM formula_items fi WHERE fi.id = weight_records.formula_item_id),
+  weight_max_snapshot = (SELECT fi.weight_max FROM formula_items fi WHERE fi.id = weight_records.formula_item_id),
+  material_code_snapshot = (SELECT m.code FROM formula_items fi JOIN materials m ON m.id = fi.material_id WHERE fi.id = weight_records.formula_item_id),
+  material_name_snapshot = (SELECT m.name FROM formula_items fi JOIN materials m ON m.id = fi.material_id WHERE fi.id = weight_records.formula_item_id)
+WHERE weight_min_snapshot IS NULL AND weight_max_snapshot IS NULL", cancellationToken: ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "回填称重记录快照失败（已忽略）");
+        }
+
+        try
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_weight_records_valid " +
+                "ON weight_records(work_order_id, formula_item_id) WHERE is_valid = 1",
+                cancellationToken: ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "创建 ux_weight_records_valid 失败：旧数据可能存在同一步骤的重复有效记录，请人工核查");
+        }
     }
 
     private static async Task StampAlembicAsync(MaterialMgmtDbContext db, string rev, CancellationToken ct)
     {
         await db.Database.ExecuteSqlRawAsync(
-            "CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)", ct);
-        await db.Database.ExecuteSqlRawAsync("DELETE FROM alembic_version", ct);
+            "CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)",
+            cancellationToken: ct);
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM alembic_version", cancellationToken: ct);
         await db.Database.ExecuteSqlRawAsync(
-            "INSERT INTO alembic_version (version_num) VALUES ({0})", rev, ct);
+            "INSERT INTO alembic_version (version_num) VALUES ({0})",
+            new object[] { rev },
+            ct);
     }
 
     private static async Task<HashSet<string>> GetColumnsAsync(

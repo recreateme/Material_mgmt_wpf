@@ -50,7 +50,8 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
         var batch = UiTheme.GhostButton("批量导出"); batch.Click += (_, _) => ExportBatch(); bar.Children.Add(batch);
         GridKit.AddSelectButtons(bar, _grid);
 
-        _grid.AutoGenerateColumns = false; _grid.IsReadOnly = true; _grid.SelectionMode = DataGridSelectionMode.Extended;
+        _grid.AutoGenerateColumns = false; _grid.IsReadOnly = true;
+        GridKit.BindSingleActions(_grid, resume, export);
         _grid.Columns.Add(GridKit.CheckColumn());
         _grid.Columns.Add(GridKit.Text("ID", "Item.Id", 70));
         _grid.Columns.Add(GridKit.Text("配方", "Item.FormulaName", 180, align: TextAlignment.Left));
@@ -72,7 +73,7 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
         var uid = _auth.CurrentUser!.Id;
         using var db = _dbFactory.CreateDbContext();
         _all = db.WorkOrders.Include(w => w.Formula)
-            .Where(w => w.OperatorId == uid)
+            .Where(w => w.OperatorId == uid && w.DeletedAt == null)
             .OrderByDescending(w => w.Id)
             .AsEnumerable()
             .Select(w => new Row(w.Id, w.FormulaId, $"{w.Formula.Code} {w.Formula.Name}", w.ProductionNo,
@@ -141,7 +142,7 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
         try
         {
             var ids = targets.Select(r => r.Id).ToList();
-            _orders.DeleteMany(ids, allowCompleted: true);
+            _orders.DeleteMany(ids, allowCompleted: true, deletedBy: _auth.CurrentUser?.Username);
             _audit.Log("order", $"操作员删除工单 {string.Join(",", ids)}", _auth.CurrentUser?.Username ?? "");
             Refresh();
             UiFeedback.Success($"已删除 {targets.Count} 条工单。");
@@ -229,7 +230,8 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
         var del = UiTheme.DangerButton("删除"); del.Click += (_, _) => Delete(); bar.Children.Add(del);
         GridKit.AddSelectButtons(bar, _grid);
 
-        _grid.AutoGenerateColumns = false; _grid.IsReadOnly = true; _grid.SelectionMode = DataGridSelectionMode.Extended;
+        _grid.AutoGenerateColumns = false; _grid.IsReadOnly = true;
+        GridKit.BindSingleActions(_grid, detail, export);
         _grid.Columns.Add(GridKit.CheckColumn());
         _grid.Columns.Add(GridKit.Text("ID", "Item.Id", 70));
         _grid.Columns.Add(GridKit.Text("配方", "Item.FormulaName", 180, align: TextAlignment.Left));
@@ -250,7 +252,8 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
     private void Refresh()
     {
         using var db = _dbFactory.CreateDbContext();
-        _all = db.WorkOrders.Include(w => w.Formula).OrderByDescending(w => w.Id).AsEnumerable()
+        _all = db.WorkOrders.Include(w => w.Formula).Where(w => w.DeletedAt == null)
+            .OrderByDescending(w => w.Id).AsEnumerable()
             .Select(w => new Row(w.Id, $"{w.Formula.Code} {w.Formula.Name}", w.Operator, w.ProductionNo,
                 OrderRules.ToDisplay(w.Status), w.StartTime, w.EndTime, w.Status))
             .ToList();
@@ -287,8 +290,8 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
         {
             Text = $"工单 #{wo.Id}\n配方：{r.FormulaName}\n操作员：{wo.Operator}\n生产编号：{wo.ProductionNo}\n" +
                    $"温度：{wo.Temperature}  湿度：{wo.Humidity}\n基膜：{wo.BaseFilm}  批次：{wo.BatchNo}\n" +
-                   string.Join("\n", wo.Records.OrderBy(x => x.Timestamp).Select(x =>
-                       $"· {x.FormulaItem.Material.Name}: {x.ActualWeight:F3}g")),
+                   string.Join("\n", wo.Records.Where(x => x.IsValid).OrderBy(x => x.Timestamp).Select(x =>
+                       $"· {x.MaterialNameSnapshot ?? x.FormulaItem.Material.Name}: {x.ActualWeight:F3}g")),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12)
         };
 
@@ -352,7 +355,7 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
         try
         {
             var ids = targets.Select(r => r.Id).ToList();
-            _orders.DeleteMany(ids, allowCompleted: true);
+            _orders.DeleteMany(ids, allowCompleted: true, deletedBy: _auth.CurrentUser?.Username);
             _audit.Log("order", $"删除工单 {string.Join(",", ids)}", _auth.CurrentUser?.Username ?? "");
             Refresh();
             UiFeedback.Success($"已删除 {targets.Count} 条工单。");

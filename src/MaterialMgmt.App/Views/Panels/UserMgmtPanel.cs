@@ -42,6 +42,7 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
         GridKit.AddSelectButtons(bar, _grid);
 
         _grid.AutoGenerateColumns = false; _grid.IsReadOnly = true;
+        GridKit.BindSingleActions(_grid, edit, reset);
         _grid.Columns.Add(GridKit.CheckColumn());
         _grid.Columns.Add(GridKit.Text("ID", "Item.Id", 60));
         _grid.Columns.Add(GridKit.Text("用户名", "Item.Username", 140));

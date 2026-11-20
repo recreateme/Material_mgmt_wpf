@@ -60,9 +60,17 @@ public sealed class HomePanel : UserControl, IPageLifecycle
                 },
                 new TextBlock
                 {
-                    Text = $"角色：{RoleLabels.ToDisplay(user.Role)}  ·  原料管理系统 WPF {AppInfo.DisplayVersion}",
-                    Foreground = new SolidColorBrush(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF)),
+                    Text = $"欢迎回来，今天是 {DateTime.Now:yyyy年M月d日 dddd}",
+                    FontSize = 14,
+                    Foreground = new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)),
                     Margin = new Thickness(0, 6, 0, 0)
+                },
+                new TextBlock
+                {
+                    Text = $"{RoleLabels.ToDisplay(user.Role)}  ·  原料管理系统 WPF {AppInfo.DisplayVersion}",
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush(Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF)),
+                    Margin = new Thickness(0, 4, 0, 0)
                 }
             }
         };
@@ -131,10 +139,10 @@ public sealed class HomePanel : UserControl, IPageLifecycle
             {
                 stats.Children.Add(Stat("原材料", db.Materials.Count().ToString()));
                 stats.Children.Add(Stat("启用配方", db.Formulas.Count(f => f.IsActive).ToString()));
-                stats.Children.Add(Stat("全部工单", db.WorkOrders.Count().ToString()));
-                stats.Children.Add(Stat("我的工单", db.WorkOrders.Count(w => w.OperatorId == user.Id).ToString()));
+                stats.Children.Add(Stat("全部工单", db.WorkOrders.Count(w => w.DeletedAt == null).ToString()));
+                stats.Children.Add(Stat("我的工单", db.WorkOrders.Count(w => w.OperatorId == user.Id && w.DeletedAt == null).ToString()));
                 stats.Children.Add(Stat("进行中",
-                    db.WorkOrders.Count(w => w.Status == "in_progress").ToString()));
+                    db.WorkOrders.Count(w => w.Status == "in_progress" && w.DeletedAt == null).ToString()));
             }
             else
             {

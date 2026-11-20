@@ -67,8 +67,8 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
 
         _grid.AutoGenerateColumns = false;
         _grid.IsReadOnly = true;
-        _grid.SelectionMode = DataGridSelectionMode.Extended;
         _grid.HeadersVisibility = DataGridHeadersVisibility.Column;
+        GridKit.EnableLinkedSelection(_grid);
         _grid.Columns.Add(GridKit.CheckColumn());
         _grid.Columns.Add(GridKit.Text("ID", "Item.Id", 70));
         _grid.Columns.Add(GridKit.Text("编码", "Item.Code", 140, align: TextAlignment.Left));
