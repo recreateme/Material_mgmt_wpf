@@ -96,8 +96,8 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
     {
         if (CurrentRow() is not { } row) return;
         var actor = _auth.CurrentUser;
-        if (actor is null) { MessageBox.Show("当前未登录用户"); return; }
-        if (row.Id == actor.Id) { MessageBox.Show("不能禁用自己"); return; }
+        if (actor is null) { UiFeedback.Hint("当前未登录用户"); return; }
+        if (row.Id == actor.Id) { UiFeedback.Hint("不能禁用自己"); return; }
         using var db = _dbFactory.CreateDbContext();
         var u = db.Users.First(x => x.Id == row.Id);
         u.IsActive = !u.IsActive; u.UpdatedAt = DateTime.Now; db.SaveChanges();
@@ -109,11 +109,11 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
     private void Delete()
     {
         var actor = _auth.CurrentUser;
-        if (actor is null) { MessageBox.Show("当前未登录用户"); return; }
+        if (actor is null) { UiFeedback.Hint("当前未登录用户"); return; }
         var list = GridKit.CheckedItems<UserRow>(_grid);
         if (list.Count == 0 && CurrentRow() is { } one) list = new List<UserRow> { one };
-        if (list.Count == 0) { MessageBox.Show("请先勾选要删除的用户"); return; }
-        if (list.Any(r => r.Id == actor.Id)) { MessageBox.Show("不能删除自己"); return; }
+        if (list.Count == 0) { UiFeedback.Hint("请先勾选要删除的用户"); return; }
+        if (list.Any(r => r.Id == actor.Id)) { UiFeedback.Hint("不能删除自己"); return; }
 
         try
         {
@@ -176,12 +176,11 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
         }
         catch (DbUpdateException)
         {
-            MessageBox.Show("删除失败：该用户仍被其它数据引用。请改用「启用/禁用」，或选择解除工单关联后再删。",
-                "无法删除", MessageBoxButton.OK, MessageBoxImage.Warning);
+            UiFeedback.Warn("删除失败：该用户仍被其它数据引用。请改用「启用/禁用」，或选择解除工单关联后再删。", "无法删除");
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"删除失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            UiFeedback.Error($"删除失败：{ex.Message}", "删除失败");
         }
     }
 

@@ -109,21 +109,19 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
 
     private void ExportOne()
     {
-        if (CurrentOrder() is not { } r) { UiFeedback.Warn("请先选择工单。"); return; }
+        if (CurrentOrder() is not { } r) { UiFeedback.Hint("请先选择工单"); return; }
         var dlg = new SaveFileDialog { Filter = "Excel|*.xlsx", FileName = ExportService.SuggestFilename(r.Id, r.FormulaName) };
         if (dlg.ShowDialog() != true) return;
-        _export.ExportWorkOrder(r.Id, dlg.FileName);
-        MessageBox.Show("导出完成");
+        UiFeedback.Export(dlg.FileName, () => _export.ExportWorkOrder(r.Id, dlg.FileName));
     }
 
     private void ExportBatch()
     {
         var ids = CheckedOrderIds();
-        if (ids.Count == 0) { UiFeedback.Warn("请勾选要导出的工单。"); return; }
+        if (ids.Count == 0) { UiFeedback.Hint("请勾选要导出的工单"); return; }
         var dlg = new SaveFileDialog { Filter = "Excel|*.xlsx", FileName = ExportService.SuggestBatchFilename() };
         if (dlg.ShowDialog() != true) return;
-        _export.ExportWorkOrders(ids, dlg.FileName);
-        MessageBox.Show("导出完成");
+        UiFeedback.Export(dlg.FileName, () => _export.ExportWorkOrders(ids, dlg.FileName));
     }
 
     private void Delete()

@@ -139,9 +139,7 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
         if (blocked.Count > 0)
         {
             var lines = string.Join("\n", blocked.Select(m => $"· {m.Code}  {m.Name}"));
-            MessageBox.Show(
-                $"以下原材料已被配方引用，无法删除（整批中止，未删除任何项）：\n{lines}",
-                "无法删除", MessageBoxButton.OK, MessageBoxImage.Warning);
+            UiFeedback.Warn($"以下原材料已被配方引用，无法删除（整批中止，未删除任何项）：\n{lines}", "无法删除");
             return;
         }
 

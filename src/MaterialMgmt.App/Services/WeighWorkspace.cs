@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using MaterialMgmt.App.Themes;
 using MaterialMgmt.App.Views;
 using MaterialMgmt.App.Views.Panels;
 using MaterialMgmt.Core.Abstractions;
@@ -38,7 +39,7 @@ public sealed class WeighWorkspace
     {
         if (_auth.CurrentUser is not { } user || !user.IsBusiness())
         {
-            MessageBox.Show("仅业务人员可打开称量窗。", "提示");
+            UiFeedback.Hint("仅业务人员可打开称量窗");
             return;
         }
 

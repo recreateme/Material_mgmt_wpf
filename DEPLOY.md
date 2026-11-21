@@ -1,4 +1,4 @@
-# 部署与数据迁移说明（WPF v4.2.3）
+# 部署与数据迁移说明（WPF v4.3.0）
 
 上手操作请先看 [docs/quickstart.md](docs/quickstart.md)。
 
@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 - 自包含 `win-x64`，目标机**无需安装 .NET**
 - **自动备份并恢复**现有 `dist\...\data\material_mgmt.db`（含 wal/shm）
 - **自动备份并恢复**现有 `config\settings.ini`
-- 产物：`dist\原料管理系统\` 与 `dist\原料管理系统-v4.2.3-win-x64.zip`
+- 产物：`dist\原料管理系统\` 与 `dist\原料管理系统-v4.3.0-win-x64.zip`
 
 ## 3. 目标机部署
 

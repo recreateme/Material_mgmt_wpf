@@ -66,7 +66,7 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
     {
         if (!CodeService.IsFormulaCode(code)) return;
         var f = _list.FirstOrDefault(x => string.Equals(x.Code, code, StringComparison.OrdinalIgnoreCase));
-        if (f is null) { MessageBox.Show($"未找到配方：{code}"); return; }
+        if (f is null) { UiFeedback.Hint($"未找到启用的配方：{code}"); return; }
         _formulas.SelectedItem = _formulas.Items.Cast<FormulaOption>().FirstOrDefault(x => x.Id == f.Id);
     }
 
@@ -196,14 +196,14 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
     {
         if (_formulas.SelectedItem is not FormulaOption opt)
         {
-            MessageBox.Show("请先选择配方", "提示");
+            UiFeedback.Hint("请先选择配方");
             return;
         }
         using (var db = _dbFactory.CreateDbContext())
         {
             if (!db.FormulaItems.Any(i => i.FormulaId == opt.Id))
             {
-                MessageBox.Show("该配方没有步骤，无法开始称量");
+                UiFeedback.Hint("该配方没有步骤，无法开始称量");
                 return;
             }
         }

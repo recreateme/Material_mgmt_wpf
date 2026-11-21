@@ -893,8 +893,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"保存称重记录失败，当前步骤未前进，请重试。\n\n{ex.Message}", "保存失败",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            UiFeedback.Error($"保存称重记录失败，当前步骤未前进，请重试。\n\n{ex.Message}", "保存失败");
             return;
         }
 
@@ -947,7 +946,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"工单已完成，但读取汇总失败：{ex.Message}", "提示");
+            UiFeedback.Warn($"工单已完成，但读取汇总失败：{ex.Message}");
             _nav.Navigate(AppPage.OperatorHistory);
             return;
         }
@@ -1018,7 +1017,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
                     Text = value, FontSize = 22, FontWeight = FontWeights.Bold,
                     Foreground = UiTheme.Brush(UiTheme.Text), Margin = new Thickness(0, 2, 0, 0)
                 },
-                new TextBlock { Text = note, FontSize = 11, Foreground = UiTheme.Brush(UiTheme.Muted) }
+                new TextBlock { Text = note, FontSize = UiTheme.FontCaption, Foreground = UiTheme.Brush(UiTheme.Muted) }
             }
         }
     };
@@ -1031,15 +1030,8 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
             FileName = ExportService.SuggestFilename(_workOrderId, formulaName)
         };
         if (dlg.ShowDialog() != true) return;
-        try
-        {
-            _export.ExportWorkOrder(_workOrderId, dlg.FileName);
-            UiFeedback.Success("已导出");
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"导出失败：{ex.Message}", "导出失败", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
+        var orderId = _workOrderId;
+        UiFeedback.Export(dlg.FileName, () => _export.ExportWorkOrder(orderId, dlg.FileName));
     }
 
     private void Cancel()
@@ -1054,7 +1046,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
             _orders.Cancel(_workOrderId);
             _audit.Log("order", $"取消工单 #{_workOrderId}", _auth.CurrentUser?.Username ?? "");
         }
-        catch (Exception ex) { MessageBox.Show(ex.Message); return; }
+        catch (Exception ex) { UiFeedback.Warn(ex.Message, "无法取消"); return; }
         UiFeedback.Success("工单已取消。");
         LeaveSession();
         _nav.Navigate(AppPage.OperatorHistory);

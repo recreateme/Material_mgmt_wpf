@@ -234,7 +234,7 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
         var port = _ports.SelectedItem as string;
         if (string.IsNullOrEmpty(port))
         {
-            MessageBox.Show("请选择 COM 口");
+            UiFeedback.Hint("请选择 COM 口");
             return;
         }
         try
@@ -242,11 +242,11 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
             using var sp = new System.IO.Ports.SerialPort(port, _config.SerialBaud);
             sp.Open();
             sp.Close();
-            MessageBox.Show($"端口 {port} 可打开", "成功");
+            UiFeedback.Success($"端口 {port} 可打开");
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"测试失败：{ex.Message}", "失败");
+            UiFeedback.Warn($"端口 {port} 测试失败：{ex.Message}", "测试失败");
         }
     }
 
@@ -258,8 +258,7 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
             !string.IsNullOrEmpty(scannerPort) &&
             string.Equals(port, scannerPort, StringComparison.OrdinalIgnoreCase))
         {
-            MessageBox.Show("电子秤与扫码枪不能使用同一 COM 口。", "端口冲突",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            UiFeedback.Warn("电子秤与扫码枪不能使用同一 COM 口。", "端口冲突");
             return;
         }
         _config.SerialPort = port;
@@ -270,7 +269,7 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
         _devices.ApplyScannerConfig(_config);
         UpdateScaleStatus();
         RefreshScannerUi();
-        MessageBox.Show("已保存", "提示");
+        UiFeedback.Success("电子天平设置已保存");
     }
 
     private void SaveScanner()
@@ -281,8 +280,7 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
             !string.IsNullOrEmpty(scalePort) &&
             string.Equals(scannerPort, scalePort, StringComparison.OrdinalIgnoreCase))
         {
-            MessageBox.Show("扫码枪 COM 不能与电子秤相同。", "端口冲突",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
+            UiFeedback.Warn("扫码枪 COM 不能与电子秤相同。", "端口冲突");
             return;
         }
 
@@ -295,12 +293,12 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
 
         _devices.ApplyScannerConfig(_config);
         RefreshScannerUi();
-        MessageBox.Show(
-            _devices.IsScannerSerialConnected
-                ? $"扫码串口已连接：{_devices.ScannerConnectedPort}"
-                : $"扫码通道：{_devices.ScannerSourceLabel}" +
-                  (string.IsNullOrEmpty(_devices.ScannerLastError) ? "" : $"\n{_devices.ScannerLastError}"),
-            "扫码设置");
+        if (_devices.IsScannerSerialConnected)
+            UiFeedback.Success($"扫码串口已连接：{_devices.ScannerConnectedPort}");
+        else if (string.IsNullOrEmpty(_devices.ScannerLastError))
+            UiFeedback.Success($"已保存，扫码通道：{_devices.ScannerSourceLabel}");
+        else
+            UiFeedback.Warn($"扫码通道：{_devices.ScannerSourceLabel}\n{_devices.ScannerLastError}", "扫码设置");
     }
 
     private void RunSelfCheck()
@@ -315,11 +313,9 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
 
         var (scaleOk, scaleMsg, scannerOk, scannerMsg) = _devices.SelfCheck(_config);
         RefreshScannerUi();
-        MessageBox.Show(
-            $"电子秤：{(scaleOk ? "✓" : "✗")} {scaleMsg}\n扫码枪：{(scannerOk ? "✓" : "✗")} {scannerMsg}",
-            "硬件自检",
-            MessageBoxButton.OK,
-            scaleOk && scannerOk ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        var report = $"电子秤：{(scaleOk ? "✓" : "✗")} {scaleMsg}\n扫码枪：{(scannerOk ? "✓" : "✗")} {scannerMsg}";
+        if (scaleOk && scannerOk) UiFeedback.Info(report, "硬件自检");
+        else UiFeedback.Warn(report, "硬件自检");
     }
 
     private void UpdateScaleStatus()
@@ -327,29 +323,29 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
         if (_devices.IsScaleConnected)
         {
             _scaleStatus.Text = $"状态：已连接（{_devices.ConnectedPort}）";
-            _scaleStatus.Foreground = new SolidColorBrush(Colors.SeaGreen);
+            _scaleStatus.Foreground = UiTheme.Brush(UiTheme.Success);
             return;
         }
         if (_devices.IsDiscovering || _devices.ScaleLastError.Contains("识别", StringComparison.Ordinal))
         {
             _scaleStatus.Text = $"状态：{_devices.ScaleLastError}";
-            _scaleStatus.Foreground = new SolidColorBrush(Colors.DarkOrange);
+            _scaleStatus.Foreground = UiTheme.Brush(UiTheme.Warning);
             return;
         }
         _scaleStatus.Text = string.IsNullOrEmpty(_devices.ScaleLastError)
             ? "状态：未连接"
             : $"状态：未连接 — {_devices.ScaleLastError}";
-        _scaleStatus.Foreground = new SolidColorBrush(Colors.IndianRed);
+        _scaleStatus.Foreground = UiTheme.Brush(UiTheme.Danger);
     }
 
     private void RefreshScannerUi()
     {
         _scanStatus.Text = $"通道：{_devices.ScannerSourceLabel}" +
                            (string.IsNullOrEmpty(_devices.ScannerLastError) ? "" : $" — {_devices.ScannerLastError}");
-        _scanStatus.Foreground = new SolidColorBrush(
+        _scanStatus.Foreground = UiTheme.Brush(
             _devices.IsScannerSerialConnected || _devices.ScannerSourceLabel.Contains("HID", StringComparison.Ordinal)
-                ? Colors.SeaGreen
-                : Colors.IndianRed);
+                ? UiTheme.Success
+                : UiTheme.Danger);
 
         if (string.IsNullOrEmpty(_devices.LastScanCode))
             _scanHint.Text = _devices.IsScannerListening ? "扫码枪监听中…请扫一张测试" : "等待扫码…";

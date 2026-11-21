@@ -1,4 +1,4 @@
-# 功能对照检查表（WPF v4.2.3）
+# 功能对照检查表（WPF v4.3.0）
 
 对照源项目 PyQt6 v3.0，并纳入 v4.2 / ui phase 增量。勾选表示已在 WPF 侧落地可演示。
 
@@ -53,6 +53,7 @@
 - [x] 我的工单（称量窗：继续 / 取消进行中 / 删除已完成或已取消 / 导出 / 分页 / 勾选 / 状态·日期·配方筛选）
 - [x] 工单历史（业务人员主窗：详情含全部记录与作废说明、扫码来源 / 异常说明 / 导出 / 软删除可追溯 / 分页 / 勾选 / 状态·日期·配方筛选）
 - [x] Excel 导出（ClosedXML，统一宋体；含快照字段与扫码来源；只含有效记录）
+- [x] 导出成功以提示条显示文件名，可点「打开所在文件夹」定位文件；失败时说明原因（如文件正被 Excel 占用）
 
 ## 其它
 
@@ -71,6 +72,7 @@
 - [x] 列表统一页头（PageHeader）、空状态（EmptyState，筛选无结果可一键清除）
 - [x] 表头三态复选框全选当前页（替代全选/取消全选按钮）；空格切换当前行
 - [x] 所有弹窗统一走 DialogWindow（Enter 确认 / Esc 取消 / 内联错误）
+- [x] 反馈分级：成功与前置提示用非模态提示条，警告 / 错误用主题弹窗（MessageDialog），破坏性操作用 ConfirmDialog；业务界面无系统消息框
 - [x] UI 主题（AppTheme + UiTheme 按钮工厂 / DialogBody）
 - [x] 文档：README / Quickstart / PROJECT / TECH / WPF 教程
 - [ ] 现场硬件联调签字 → 见 [hardware-checklist.md](hardware-checklist.md)

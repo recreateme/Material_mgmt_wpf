@@ -1,6 +1,6 @@
 # 项目结构与模块对照
 
-原料管理系统 WPF v4.2.3 — 文件、代码分层与功能映射。
+原料管理系统 WPF v4.3.0 — 文件、代码分层与功能映射。
 
 ## 仓库目录
 
@@ -95,6 +95,7 @@ Material_Mgmt_wpf/
 | 行拖拽排序 | `App/Controls/RowDragReorder.cs` + `FormulaSequence.MoveTo` | 只从手柄列开始拖，显示插入线、边缘自动滚动；配方编辑页使用 |
 | 表格勾选 | `App/Controls/SelectableRow.cs`（`GridKit`） | 行复选框与选中行联动；表头三态复选框全选当前页；空格切换当前行 |
 | 弹窗基类 | `App/Views/Dialogs/DialogWindow.cs` | 所有弹窗统一：Owner、Enter 确认 / Esc 取消、字段内联错误、可调大小 |
+| 反馈 | `App/Themes/UiFeedback.cs` + `Controls/Toast.cs` + `Views/Dialogs/MessageDialog.cs` / `ConfirmDialog.cs` | `Success` / `Hint` 走右上角非模态提示条；`Info` / `Warn` / `Error` 走主题弹窗；`Export` 统一导出成功（带「打开所在文件夹」）与失败提示；破坏性操作用 `ConfirmDialog`。业务代码不直接调用 `MessageBox`（仅 `App.xaml.cs` 的启动失败 / 未捕获异常保留系统消息框） |
 | 步骤范围校验 | `Core/Formulas/StepRange.cs` | 上下限解析与校验（单测覆盖） |
 | 提示音 | `App/Services/SoundService.cs` | 内存合成 WAV；受 `sound_enabled` 与 `sound_volume`（low / medium / high）控制 |
 | 角色迁移 | `Core/Auth/RoleMigration.cs` | admin→system_admin，operator→business，删 root |

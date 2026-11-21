@@ -102,19 +102,19 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
 
     private void Resume()
     {
-        if (CurrentOrder() is not { } r) { MessageBox.Show("请先选择工单", "提示"); return; }
-        if (r.Status != "in_progress") { MessageBox.Show("仅可恢复进行中的工单"); return; }
+        if (CurrentOrder() is not { } r) { UiFeedback.Hint("请先选择工单"); return; }
+        if (r.Status != "in_progress") { UiFeedback.Hint("仅可恢复进行中的工单"); return; }
         _nav.Navigate(AppPage.WeighSession, v => ((WeighSessionPanel)v).Load(r.Id, r.FormulaId));
     }
 
     private void CancelSelected()
     {
         var rows = SelectedRows();
-        if (rows.Count == 0) { MessageBox.Show("请先勾选要进行中的工单"); return; }
+        if (rows.Count == 0) { UiFeedback.Hint("请先勾选要取消的工单"); return; }
         var targets = rows.Where(r => r.Status == "in_progress").ToList();
         if (targets.Count == 0)
         {
-            MessageBox.Show("仅可取消「进行中」的工单；已完成请使用「删除已完成」");
+            UiFeedback.Hint("仅可取消「进行中」的工单；已完成请使用「删除已完成」");
             return;
         }
         var skipped = rows.Count - targets.Count;
@@ -135,17 +135,17 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
                 ? $"工单 #{targets[0].Id} 已取消。"
                 : $"已取消 {targets.Count} 条工单。");
         }
-        catch (Exception ex) { MessageBox.Show(ex.Message); }
+        catch (Exception ex) { UiFeedback.Warn(ex.Message, "无法取消"); }
     }
 
     private void DeleteCompleted()
     {
         var rows = SelectedRows();
-        if (rows.Count == 0) { MessageBox.Show("请先勾选要删除的已完成工单"); return; }
+        if (rows.Count == 0) { UiFeedback.Hint("请先勾选要删除的已完成工单"); return; }
         var targets = rows.Where(r => r.Status is "completed" or "cancelled").ToList();
         if (targets.Count == 0)
         {
-            MessageBox.Show("仅可删除「已完成 / 已取消」的工单；进行中请先取消");
+            UiFeedback.Hint("仅可删除「已完成 / 已取消」的工单；进行中请先取消");
             return;
         }
         var skipped = rows.Count - targets.Count;
@@ -162,26 +162,24 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
             Refresh();
             UiFeedback.Success($"已删除 {targets.Count} 条工单。");
         }
-        catch (Exception ex) { MessageBox.Show(ex.Message); }
+        catch (Exception ex) { UiFeedback.Warn(ex.Message, "无法删除"); }
     }
 
     private void ExportOne()
     {
-        if (CurrentOrder() is not { } r) { MessageBox.Show("请先选择工单", "提示"); return; }
+        if (CurrentOrder() is not { } r) { UiFeedback.Hint("请先选择工单"); return; }
         var dlg = new SaveFileDialog { Filter = "Excel|*.xlsx", FileName = ExportService.SuggestFilename(r.Id, r.FormulaName) };
         if (dlg.ShowDialog() != true) return;
-        _export.ExportWorkOrder(r.Id, dlg.FileName);
-        MessageBox.Show("导出完成");
+        UiFeedback.Export(dlg.FileName, () => _export.ExportWorkOrder(r.Id, dlg.FileName));
     }
 
     private void ExportBatch()
     {
         var ids = CheckedOrderIds();
-        if (ids.Count == 0) { MessageBox.Show("请勾选要导出的工单"); return; }
+        if (ids.Count == 0) { UiFeedback.Hint("请勾选要导出的工单"); return; }
         var dlg = new SaveFileDialog { Filter = "Excel|*.xlsx", FileName = ExportService.SuggestBatchFilename() };
         if (dlg.ShowDialog() != true) return;
-        _export.ExportWorkOrders(ids, dlg.FileName);
-        MessageBox.Show("导出完成");
+        UiFeedback.Export(dlg.FileName, () => _export.ExportWorkOrders(ids, dlg.FileName));
     }
 
     private List<Row> SelectedRows()

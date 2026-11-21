@@ -22,7 +22,7 @@
     <ApplicationIcon Condition="Exists('Resources\\cat.ico')">Resources\cat.ico</ApplicationIcon>
     <AssemblyName>原料管理系统</AssemblyName>
     <Product>原料管理系统</Product>
-    <Version>4.2.3</Version>
+    <Version>4.3.0</Version>
     <!-- PerMonitorV2：多显示器 / 不同缩放比例下文字与布局保持清晰 -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>

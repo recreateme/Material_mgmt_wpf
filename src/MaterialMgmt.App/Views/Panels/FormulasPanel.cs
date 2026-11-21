@@ -197,9 +197,7 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
         if (blocked.Count > 0)
         {
             var lines = string.Join("\n", blocked.Select(f => $"· {f.Code}  {f.Name}"));
-            MessageBox.Show(
-                $"以下配方已有工单，无法删除（整批中止，未删除任何项）：\n{lines}",
-                "无法删除", MessageBoxButton.OK, MessageBoxImage.Warning);
+            UiFeedback.Warn($"以下配方已有工单，无法删除（整批中止，未删除任何项）：\n{lines}", "无法删除");
             return;
         }
 

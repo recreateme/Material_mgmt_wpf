@@ -16,24 +16,29 @@ public static class Toast
 
     public static void Success(string message) => Show(message, UiTheme.Success, "✓");
 
+    /// <summary>带一个操作按钮（如“打开所在文件夹”）的成功提示；停留更久，鼠标悬停时不消失。</summary>
+    public static void Success(string message, string actionText, Action action)
+        => Show(message, UiTheme.Success, "✓", seconds: 8, action: (actionText, action));
+
     public static void Warning(string message) => Show(message, UiTheme.Warning, "!");
 
     public static void Error(string message) => Show(message, UiTheme.Danger, "✕", seconds: 5);
 
-    private static void Show(string message, Color accent, string icon, double seconds = 3)
+    private static void Show(string message, Color accent, string icon, double seconds = 3,
+        (string Text, Action Run)? action = null)
     {
         var app = Application.Current;
         if (app is null) return;
         if (!app.Dispatcher.CheckAccess())
         {
-            app.Dispatcher.BeginInvoke(() => Show(message, accent, icon, seconds));
+            app.Dispatcher.BeginInvoke(() => Show(message, accent, icon, seconds, action));
             return;
         }
 
         var owner = FindRootOwner();
         if (owner is null) return;
 
-        var toast = new ToastWindow(owner, message, accent, icon);
+        var toast = new ToastWindow(owner, message, accent, icon, action);
         Active.Add(toast);
         toast.Closed += (_, _) =>
         {
@@ -79,7 +84,7 @@ public static class Toast
 
 internal sealed class ToastWindow : Window
 {
-    public ToastWindow(Window owner, string message, Color accent, string icon)
+    public ToastWindow(Window owner, string message, Color accent, string icon, (string Text, Action Run)? action = null)
     {
         Owner = owner;
         WindowStyle = WindowStyle.None;
@@ -113,7 +118,33 @@ internal sealed class ToastWindow : Window
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         row.Children.Add(badge);
-        row.Children.Add(text);
+        if (action is { } a)
+        {
+            var link = new Button
+            {
+                Content = a.Text,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Focusable = false,
+                Margin = new Thickness(10, 6, 0, 0),
+                Padding = new Thickness(0),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Foreground = UiTheme.Brush(UiTheme.Primary),
+                FontSize = UiTheme.FontCaption,
+                Template = LinkTemplate()
+            };
+            link.Click += (_, _) =>
+            {
+                a.Run();
+                Close();
+            };
+            row.Children.Add(new StackPanel { Children = { text, link } });
+        }
+        else
+        {
+            row.Children.Add(text);
+        }
 
         Content = new Border
         {
@@ -131,12 +162,23 @@ internal sealed class ToastWindow : Window
         };
     }
 
+    /// <summary>只显示内容、带下划线的文字按钮。</summary>
+    private static ControlTemplate LinkTemplate()
+    {
+        var text = new FrameworkElementFactory(typeof(TextBlock));
+        text.SetValue(TextBlock.TextDecorationsProperty, TextDecorations.Underline);
+        text.SetBinding(TextBlock.TextProperty,
+            new System.Windows.Data.Binding("Content") { RelativeSource = System.Windows.Data.RelativeSource.TemplatedParent });
+        return new ControlTemplate(typeof(Button)) { VisualTree = text };
+    }
+
     public void BeginAutoClose(TimeSpan visible)
     {
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = visible };
         Closed += (_, _) => timer.Stop();
         timer.Tick += (_, _) =>
         {
+            if (IsMouseOver) return;
             timer.Stop();
             if (!IsVisible) return;
             var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(300));

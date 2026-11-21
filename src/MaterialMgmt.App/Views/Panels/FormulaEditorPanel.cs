@@ -218,7 +218,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
     }
 
     /// <summary>写库前复核：编辑页打开期间可能有人用该配方开了工单。不可改时提示并刷新锁定状态。</summary>
-    private bool EnsureEditable(Window? owner = null)
+    private bool EnsureEditable()
     {
         try
         {
@@ -227,8 +227,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         }
         catch (InvalidOperationException ex)
         {
-            if (owner is null) MessageBox.Show(ex.Message, "无法修改步骤", MessageBoxButton.OK, MessageBoxImage.Warning);
-            else MessageBox.Show(owner, ex.Message, "无法修改步骤", MessageBoxButton.OK, MessageBoxImage.Warning);
+            UiFeedback.Warn(ex.Message, "无法修改步骤");
             RefreshLock();
             return false;
         }
@@ -405,10 +404,10 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         {
             var seqs = string.Join("、", selected.Where(x => used.Contains(x.Id))
                 .OrderBy(x => x.Sequence).Select(x => $"第 {x.Sequence} 步"));
-            MessageBox.Show(
+            UiFeedback.Warn(
                 $"{seqs}已有称重记录，不能删除（历史工单需要按步骤追溯）。\n" +
                 "如需调整配方，建议复制为新配方后再修改。",
-                "无法删除", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "无法删除");
             return;
         }
 
@@ -436,8 +435,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"删除步骤失败：{ex.GetBaseException().Message}", "删除失败",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            UiFeedback.Error($"删除步骤失败：{ex.GetBaseException().Message}", "删除失败");
             Reload();
             return;
         }
