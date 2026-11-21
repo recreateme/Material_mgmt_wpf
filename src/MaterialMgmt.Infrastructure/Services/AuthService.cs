@@ -16,13 +16,6 @@ public sealed class AuthService : IAuthService
     private readonly Dictionary<string, (int Fails, DateTime LockedUntil)> _attempts =
         new(StringComparer.OrdinalIgnoreCase);
 
-    // 出厂种子账号的默认密码（与 DbBootstrap 种子保持一致），登录后强制修改
-    private static readonly Dictionary<string, string> SeedDefaults = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["admin"] = "88888888",
-        ["operator"] = "operator123"
-    };
-
     public TimeSpan? GetLockoutRemaining(string username)
     {
         lock (_lock)
@@ -34,7 +27,7 @@ public sealed class AuthService : IAuthService
     }
 
     public bool IsDefaultPassword(string username, string password)
-        => SeedDefaults.TryGetValue(username, out var d) && d == password;
+        => PasswordPolicy.IsSeedDefault(username, password);
 
     public AuthService(IDbContextFactory<MaterialMgmtDbContext> factory)
     {
@@ -122,8 +115,10 @@ public sealed class AuthService : IAuthService
                    ?? throw new InvalidOperationException("用户不存在");
         if (!VerifyPassword(oldPassword, user.PasswordHash))
             throw new InvalidOperationException("原密码不正确");
-        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length < 6)
-            throw new InvalidOperationException("新密码至少 6 位");
+        if (PasswordPolicy.Validate(user.Username, newPassword) is { } problem)
+            throw new InvalidOperationException(problem);
+        if (newPassword == oldPassword)
+            throw new InvalidOperationException("新密码不能与原密码相同");
         user.PasswordHash = HashPassword(newPassword);
         user.UpdatedAt = DateTime.Now;
         db.SaveChanges();

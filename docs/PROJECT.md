@@ -98,6 +98,8 @@ Material_Mgmt_wpf/
 | 步骤范围校验 | `Core/Formulas/StepRange.cs` | 上下限解析与校验（单测覆盖） |
 | 提示音 | `App/Services/SoundService.cs` | 内存合成 WAV；受 `sound_enabled` 与 `sound_volume`（low / medium / high）控制 |
 | 角色迁移 | `Core/Auth/RoleMigration.cs` | admin→system_admin，operator→business，删 root |
+| 密码规则 | `Core/Auth/PasswordPolicy.cs` | 至少 6 位、不等于用户名、不能用出厂默认密码；种子账号默认密码也集中在此（单测覆盖） |
+| 登录 | `App/Views/Dialogs/LoginWindow.cs` + `FirstLoginWizard.cs` | 背景图等比完整缩放 + 右侧登录卡片；记住用户名、显示密码、大写锁定提示、锁定倒计时；首次登录两步向导（改默认密码 → 填姓名） |
 | 天平 | `Infrastructure/Hardware/ScaleWorker.cs` | Modbus-RTU 读重、端口探测 |
 | 扫码串口 | `Infrastructure/Hardware/BarcodeSerialService.cs` | USB COM 按 CR/LF 收整帧 |
 | 扫码 HID | `Infrastructure/Hardware/BarcodeInputService.cs` | 键盘楔入聚合（应急回退） |
@@ -138,7 +140,7 @@ Material_Mgmt_wpf/
 |----|-----|------|
 | `[serial]` | port, baud_rate, auto_connect, raw_frame_log | 电子天平；`raw_frame_log = true` 时把收发原始帧写入 app.log（排查用） |
 | `[scanner]` | port, baud_rate, mode, enabled | 扫码枪（mode: Auto / Serial / Hid） |
-| `[app]` | window_width, window_height, window_maximized, sound_enabled, sound_volume | 主窗几何、提示音开关与音量 |
+| `[app]` | window_width, window_height, window_maximized, sound_enabled, sound_volume, last_username, login_bg_online | 主窗几何、提示音开关与音量、上次登录用户名（不存密码）、是否允许在线加载登录背景（默认 false） |
 | `[weigh_window]` | left, top, width, height, maximized | 称量窗几何（超出屏幕时回到默认居中） |
 
 首次运行：复制 `config/settings.example.ini` → `config/settings.ini`。

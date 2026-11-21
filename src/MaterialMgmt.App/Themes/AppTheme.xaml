@@ -32,6 +32,9 @@
     <Color x:Key="C.BannerStart">#1E3A5F</Color>
     <Color x:Key="C.BannerEnd">#2563EB</Color>
     <Color x:Key="C.WeightUnstable">#94A3B8</Color>
+    <!-- 登录页：Backdrop 与背景图边缘的深蓝一致，图片等比缩放后留出的空白不显突兀 -->
+    <Color x:Key="C.LoginBackdrop">#040A2C</Color>
+    <Color x:Key="C.LoginPanel">#0B1747</Color>
 
     <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource C.Primary}"/>
     <SolidColorBrush x:Key="PrimaryHoverBrush" Color="{StaticResource C.PrimaryHover}"/>

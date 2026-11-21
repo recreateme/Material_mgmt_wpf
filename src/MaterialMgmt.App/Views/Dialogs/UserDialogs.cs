@@ -35,7 +35,7 @@ public sealed class UserEditDialog : DialogWindow
         _display = AddField("显示名", new TextBox { Text = displayName ?? "" },
             "角色固定为业务人员（可管理原料/配方/称量）");
         if (userId is null)
-            _password = AddField("初始密码（至少 6 位）", new PasswordBox());
+            _password = AddField("初始密码", new PasswordBox(), PasswordPolicy.Hint);
     }
 
     protected override void OnConfirm()
@@ -47,9 +47,9 @@ public sealed class UserEditDialog : DialogWindow
             {
                 var name = _username.Text.Trim();
                 if (name.Length == 0) { ShowError(_username, "请填写用户名"); return; }
-                if (_password is null || string.IsNullOrWhiteSpace(_password.Password))
-                { ShowError(_password ?? (FrameworkElement)_username, "请填写初始密码"); return; }
-                if (_password.Password.Length < 6) { ShowError(_password, "密码至少 6 位"); return; }
+                if (_password is null) return;
+                if (PasswordPolicy.Validate(name, _password.Password) is { } problem)
+                { ShowError(_password, problem); return; }
                 if (db.Users.Any(u => u.Username == name)) { ShowError(_username, "该用户名已存在"); return; }
 
                 db.Users.Add(new User
@@ -141,6 +141,7 @@ public sealed class ResetPasswordDialog : DialogWindow
     private readonly IAuthService _auth;
     private readonly IAuditLog _audit;
     private readonly int _userId;
+    private readonly string _username;
     private readonly PasswordBox _password;
 
     public ResetPasswordDialog(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth, IAuditLog audit,
@@ -151,18 +152,20 @@ public sealed class ResetPasswordDialog : DialogWindow
         _auth = auth;
         _audit = audit;
         _userId = userId;
+        _username = username;
         Body.Children.Add(new TextBlock
         {
             Text = $"为账号「{username}」设置新密码。",
             Foreground = UiTheme.Brush(UiTheme.Muted),
             Margin = new Thickness(0, 0, 0, 12)
         });
-        _password = AddField("新密码（至少 6 位）", new PasswordBox());
+        _password = AddField("新密码", new PasswordBox(), PasswordPolicy.Hint);
     }
 
     protected override void OnConfirm()
     {
-        if (_password.Password.Length < 6) { ShowError(_password, "密码至少 6 位"); return; }
+        if (PasswordPolicy.Validate(_username, _password.Password) is { } problem)
+        { ShowError(_password, problem); return; }
         try
         {
             using var db = _dbFactory.CreateDbContext();

@@ -249,7 +249,7 @@ public partial class MainWindow : Window
         // 退出登录期间避免「无窗口」触发应用退出
         Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-        var login = new LoginWindow(_auth, _audit) { Owner = this };
+        var login = new LoginWindow(_auth, _config, _audit) { Owner = this };
         if (login.ShowDialog() == true && login.LoggedInUser is not null)
         {
             OnLogin(login.LoggedInUser);

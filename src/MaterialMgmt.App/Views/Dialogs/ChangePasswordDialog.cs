@@ -1,6 +1,7 @@
 using System.Windows.Controls;
 using MaterialMgmt.App.Controls;
 using MaterialMgmt.Core.Abstractions;
+using MaterialMgmt.Core.Auth;
 
 namespace MaterialMgmt.App.Views.Dialogs;
 
@@ -17,7 +18,7 @@ public sealed class ChangePasswordDialog : DialogWindow
         _auth = auth;
         _userId = userId;
         _old = AddField("原密码", new PasswordBox());
-        _nw = AddField("新密码（至少 6 位）", new PasswordBox());
+        _nw = AddField("新密码", new PasswordBox(), PasswordPolicy.Hint);
         _confirm = AddField("确认新密码", new PasswordBox());
     }
 
@@ -33,7 +34,7 @@ public sealed class ChangePasswordDialog : DialogWindow
         catch (Exception ex)
         {
             // 服务层的失败原因（原密码错误、新密码不合规等）直接显示在对应字段旁
-            ShowError(ex.Message.Contains("原密码", StringComparison.Ordinal) ? _old : _nw, ex.Message);
+            ShowError(ex.Message.Contains("原密码不正确", StringComparison.Ordinal) ? _old : _nw, ex.Message);
             return;
         }
         Accept();

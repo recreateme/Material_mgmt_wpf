@@ -76,7 +76,7 @@ public partial class App : Application
 
         var auth = _services.GetRequiredService<IAuthService>();
         var audit = _services.GetRequiredService<IAuditLog>();
-        var login = new LoginWindow(auth, audit);
+        var login = new LoginWindow(auth, _services.GetRequiredService<IConfigService>(), audit);
         if (login.ShowDialog() != true || login.LoggedInUser is null)
         {
             Shutdown(0);

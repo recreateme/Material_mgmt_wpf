@@ -30,6 +30,8 @@ public static class UiTheme
     public static readonly Color WeightOk = Res("C.Success");
     public static readonly Color WeightUnstable = Res("C.WeightUnstable");
     public static readonly Color WeightBad = Res("C.Danger");
+    public static readonly Color LoginBackdrop = Res("C.LoginBackdrop");
+    public static readonly Color LoginPanel = Res("C.LoginPanel");
 
     /// <summary>4 档字号：标题 / 小标题 / 正文 / 说明（最小 12）。</summary>
     public static readonly double FontTitle = ResDouble("FontSizeTitle", 20);

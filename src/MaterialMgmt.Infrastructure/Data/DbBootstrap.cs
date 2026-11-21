@@ -313,8 +313,8 @@ WHERE weight_min_snapshot IS NULL AND weight_max_snapshot IS NULL", cancellation
         {
             var seeds = new (string U, string Pw, string Display, string Role)[]
             {
-                ("admin", "88888888", "系统管理员", Roles.SystemAdmin),
-                ("operator", "operator123", "业务人员", Roles.Business),
+                ("admin", PasswordPolicy.SeedPasswords["admin"], "系统管理员", Roles.SystemAdmin),
+                ("operator", PasswordPolicy.SeedPasswords["operator"], "业务人员", Roles.Business),
             };
             foreach (var (u, pw, display, role) in seeds)
             {
