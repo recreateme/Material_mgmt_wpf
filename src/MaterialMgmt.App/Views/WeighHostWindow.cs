@@ -128,7 +128,7 @@ public sealed class WeighHostWindow : Window
         if (_navList.SelectedItem is not NavItem item) return;
         if (_nav.Current == AppPage.WeighSession)
         {
-            MessageBox.Show(this, "请先完成或取消当前称量后再切换页面。", "提示");
+            MessageBox.Show(this, "请先完成、暂停（左上角“暂停并返回”）或取消当前称量后再切换页面。", "提示");
             _syncingNav = true;
             try { _navList.SelectedItem = _items.First(x => x.Page == AppPage.SessionSelect); }
             finally { _syncingNav = false; }

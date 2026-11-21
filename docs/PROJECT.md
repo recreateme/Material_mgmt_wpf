@@ -1,6 +1,6 @@
 # 项目结构与模块对照
 
-原料管理系统 WPF v4.2.1 — 文件、代码分层与功能映射。
+原料管理系统 WPF v4.2.2 — 文件、代码分层与功能映射。
 
 ## 仓库目录
 
@@ -70,7 +70,7 @@ Material_Mgmt_wpf/
 | `SettingsPanel` | 系统设置 | 全部 | 秤/扫码 COM、模式、自检、改密 |
 | `WeighHostWindow` | 称量窗（独立） | business | 宿主：开始称量 / 称量中 / 我的工单 |
 | `SessionSelectPanel` | 开始称量 | business（称量窗） | 选配方、工艺参数、开工单 |
-| `WeighSessionPanel` | 称量中 | business（称量窗） | 进度侧栏、扫码比对、回称、确认步骤 |
+| `WeighSessionPanel` | 称量中 | business（称量窗） | 进度侧栏、量程条、提示音、扫码比对、回称、确认步骤 |
 | `OperatorHistoryPanel` | 我的工单 | business（称量窗） | 继续/取消进行中、删除已完成或已取消、导出 |
 
 ## 核心服务对照
@@ -81,6 +81,9 @@ Material_Mgmt_wpf/
 | 导航 | `App/Services/NavigationService.cs` | 页面注册、缓存、角色权限、`IBarcodeHandler` |
 | 称量工作区 | `App/Services/WeighWorkspace.cs` | 单称量窗生命周期；与主窗退出登录协调 |
 | 称量状态机 | `Core/Workflow/WorkflowEngine.cs` | 等待扫码 → 称重 → 确认 → 下一步；回称 `RewindToStep` |
+| 量程计算 | `Core/Workflow/RangeGaugeMath.cs` | 目标区间与指针比例（单测覆盖） |
+| 量程条 UI | `App/Controls/RangeGauge.cs` | 称量页可视化目标范围 |
+| 提示音 | `App/Services/SoundService.cs` | 内存合成 WAV；受 `sound_enabled` 控制 |
 | 角色迁移 | `Core/Auth/RoleMigration.cs` | admin→system_admin，operator→business，删 root |
 | 天平 | `Infrastructure/Hardware/ScaleWorker.cs` | Modbus-RTU 读重、端口探测 |
 | 扫码串口 | `Infrastructure/Hardware/BarcodeSerialService.cs` | USB COM 按 CR/LF 收整帧 |

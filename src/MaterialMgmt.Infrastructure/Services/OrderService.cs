@@ -110,6 +110,29 @@ public sealed class OrderService
             .ToHashSet();
     }
 
+    /// <summary>各步骤当前有效记录的实测重量（同一步多条有效记录时取最新）。</summary>
+    public Dictionary<int, double> GetValidWeights(int workOrderId)
+    {
+        using var db = _factory.CreateDbContext();
+        return db.WeightRecords
+            .Where(r => r.WorkOrderId == workOrderId && r.IsValid)
+            .OrderBy(r => r.Timestamp)
+            .Select(r => new { r.FormulaItemId, r.ActualWeight })
+            .AsEnumerable()
+            .GroupBy(x => x.FormulaItemId)
+            .ToDictionary(g => g.Key, g => g.Last().ActualWeight);
+    }
+
+    /// <summary>完工汇总：起止时间、有效步骤数、重称（作废）次数。</summary>
+    public OrderSummary GetSummary(int workOrderId)
+    {
+        using var db = _factory.CreateDbContext();
+        var wo = db.WorkOrders.First(x => x.Id == workOrderId);
+        var valid = db.WeightRecords.Count(r => r.WorkOrderId == workOrderId && r.IsValid);
+        var voided = db.WeightRecords.Count(r => r.WorkOrderId == workOrderId && !r.IsValid);
+        return new OrderSummary(wo.StartTime, wo.EndTime, valid, voided);
+    }
+
     public void CompleteWorkOrder(int workOrderId)
     {
         using var db = _factory.CreateDbContext();
@@ -120,3 +143,5 @@ public sealed class OrderService
         db.SaveChanges();
     }
 }
+
+public sealed record OrderSummary(DateTime StartTime, DateTime? EndTime, int StepCount, int ReworkCount);

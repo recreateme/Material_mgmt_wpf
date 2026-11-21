@@ -43,6 +43,7 @@ public partial class App : Application
         sc.AddSingleton<NavigationService>();
         sc.AddSingleton<DeviceHub>();
         sc.AddSingleton<WeighWorkspace>();
+        sc.AddSingleton<SoundService>();
         sc.AddTransient<HomePanel>();
         sc.AddTransient<MaterialsPanel>();
         sc.AddTransient<FormulasPanel>();

@@ -71,6 +71,24 @@ public sealed class ConfigService : IConfigService
         }
     }
 
+    public bool SoundEnabled
+    {
+        get => !bool.TryParse(Get("app", "sound_enabled", "true"), out var v) || v;
+        set
+        {
+            Set("app", "sound_enabled", value ? "true" : "false");
+            Save();
+        }
+    }
+
+    public string GetValue(string section, string key, string fallback) => Get(section, key, fallback);
+
+    public void SetValue(string section, string key, string value)
+    {
+        Set(section, key, value);
+        Save();
+    }
+
     public (int Width, int Height) WindowSize
     {
         get
@@ -111,6 +129,7 @@ public sealed class ConfigService : IConfigService
         Set("app", "window_width", "1280");
         Set("app", "window_height", "800");
         Set("app", "window_maximized", "false");
+        Set("app", "sound_enabled", "true");
     }
 
     private string Get(string section, string key, string fallback)

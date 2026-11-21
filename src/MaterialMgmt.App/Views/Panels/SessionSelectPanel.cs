@@ -18,6 +18,7 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
     private readonly IAuthService _auth;
     private readonly IAuditLog _audit;
     private readonly NavigationService _nav;
+    private readonly IConfigService _config;
     private readonly ComboBox _formulas = new() { Width = 360, MinWidth = 280 };
     private readonly TextBlock _preview = new()
     {
@@ -30,9 +31,9 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
     private List<Formula> _list = new();
 
     public SessionSelectPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth,
-        IAuditLog audit, NavigationService nav)
+        IAuditLog audit, NavigationService nav, IConfigService config)
     {
-        _dbFactory = dbFactory; _auth = auth; _audit = audit; _nav = nav;
+        _dbFactory = dbFactory; _auth = auth; _audit = audit; _nav = nav; _config = config;
         _start = UiTheme.PrimaryButton("填写工艺参数并开始");
         Build();
     }
@@ -121,7 +122,7 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
             }
         }
 
-        var dlg = new WorkOrderParamsDialog { Owner = Window.GetWindow(this) };
+        var dlg = new WorkOrderParamsDialog(_config);
         if (dlg.ShowDialog() != true || dlg.Params is null) return;
         var p = dlg.Params;
         var user = _auth.CurrentUser!;

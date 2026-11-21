@@ -14,6 +14,8 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
     private readonly IConfigService _config;
     private readonly IAuthService _auth;
     private readonly DeviceHub _devices;
+    private readonly SoundService _sound;
+    private readonly CheckBox _soundOn = new() { Content = "称量时播放提示音", Margin = new Thickness(0, 8, 0, 8) };
     private readonly ComboBox _ports = new() { Width = 180, Height = 30 };
     private readonly CheckBox _auto = new() { Content = "登录后自动识别并连接电子秤", Margin = new Thickness(0, 8, 0, 8) };
     private readonly TextBlock _scaleStatus = new() { Margin = new Thickness(0, 8, 0, 0) };
@@ -26,8 +28,9 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
     private readonly TextBlock _scanHint = new() { Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap };
     private readonly TextBox _simCode = new() { Width = 220, Height = 30, Text = "MAT-000001" };
 
-    public SettingsPanel(IConfigService config, IAuthService auth, DeviceHub devices)
+    public SettingsPanel(IConfigService config, IAuthService auth, DeviceHub devices, SoundService sound)
     {
+        _sound = sound;
         _config = config;
         _auth = auth;
         _devices = devices;
@@ -40,6 +43,7 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
     {
         ReloadPorts();
         _auto.IsChecked = _config.AutoConnect;
+        _soundOn.IsChecked = _config.SoundEnabled;
         _scannerEnabled.IsChecked = _config.ScannerEnabled;
         _scannerMode.SelectedValue = _config.ScannerMode;
         _scannerBaud.SelectedItem = _config.ScannerBaud.ToString();
@@ -72,6 +76,30 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
         root.Children.Add(row);
         root.Children.Add(_auto);
         root.Children.Add(_scaleStatus);
+
+        root.Children.Add(new TextBlock
+        {
+            Text = "提示音", FontWeight = FontWeights.SemiBold, FontSize = 15, Margin = new Thickness(0, 24, 0, 0)
+        });
+        _soundOn.Click += (_, _) => _config.SoundEnabled = _soundOn.IsChecked == true;
+        root.Children.Add(_soundOn);
+        var soundRow = new StackPanel { Orientation = Orientation.Horizontal };
+        soundRow.Children.Add(new TextBlock
+        {
+            Text = "试听：", VerticalAlignment = VerticalAlignment.Center, Foreground = UiTheme.Brush(UiTheme.Muted)
+        });
+        foreach (var (label, cue) in new[]
+        {
+            ("合格", SoundCue.StableOk), ("超范围", SoundCue.OutOfRange),
+            ("扫错码", SoundCue.WrongScan), ("读数中断", SoundCue.ReadingLost)
+        })
+        {
+            var b = UiTheme.GhostButton(label);
+            b.Margin = new Thickness(0, 0, 6, 0);
+            b.Click += (_, _) => _sound.Preview(cue);
+            soundRow.Children.Add(b);
+        }
+        root.Children.Add(soundRow);
 
         root.Children.Add(new TextBlock
         {

@@ -1,6 +1,6 @@
 # 技术说明
 
-原料管理系统 WPF v4.2.1 — 运维联调与开发架构。
+原料管理系统 WPF v4.2.2 — 运维联调与开发架构。
 
 ---
 
@@ -95,7 +95,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 产物：
 
 - `dist/原料管理系统/` — 完整文件夹（须整夹分发）
-- `dist/原料管理系统-v4.2.1-win-x64.zip` — 压缩包
+- `dist/原料管理系统-v4.2.2-win-x64.zip` — 压缩包
 
 详见 [DEPLOY.md](../DEPLOY.md) 与 [hardware-checklist.md](hardware-checklist.md)。
 

@@ -312,6 +312,31 @@ public sealed class DeviceHub : IDisposable
         }
     }
 
+    /// <summary>向天平发送清零指令。未连接时返回 false。</summary>
+    public bool SendZero()
+    {
+        var worker = _scale;
+        if (worker is not { IsOpen: true }) return false;
+        worker.SendZero();
+        return true;
+    }
+
+    /// <summary>用户点击“重连”：立即重试，不等退避计时；读数已中断但串口尚未判定断开时也会重建连接。</summary>
+    public void ReconnectScale(IConfigService config)
+    {
+        _userDisconnected = false;
+        _retryAfter = DateTime.MinValue;
+        if (IsDiscovering) return;
+
+        DisconnectScale(keepPreference: true);
+        var preferred = string.IsNullOrWhiteSpace(_preferredPort) ? config.SerialPort : _preferredPort;
+        if (!string.IsNullOrWhiteSpace(preferred) &&
+            ScaleWorker.ListPorts().Any(p => string.Equals(p, preferred, StringComparison.OrdinalIgnoreCase)))
+            ConnectScale(preferred, config.SerialBaud, fromUser: false);
+        else
+            BeginDiscoverAndConnect(config);
+    }
+
     public void DisconnectScale(bool keepPreference = false)
     {
         if (!keepPreference) _userDisconnected = true;
