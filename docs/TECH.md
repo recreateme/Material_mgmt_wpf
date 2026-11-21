@@ -222,7 +222,9 @@ CRC16 Modbus。若现场天平协议不同，需修改 `ScaleWorker`。
 ## 2.9 数据库
 
 - 上下文：`MaterialMgmtDbContext`
-- 启动：`DbBootstrap` 确保表存在、写入种子账号（空库时）；已有账号的自定义显示名不会被覆盖（仅迁移历史名「李园涛」）
+- 启动：`DbBootstrap` 先备份，再建表（空库）或执行结构迁移（旧库），然后写入种子账号（空库时）；已有账号的自定义显示名不会被覆盖（`[migration] legacy_admin_username` 指定的历史管理员账号除外）
+- 结构迁移：`Data/Migrations/SchemaMigrations.cs` 是有序列表，版本号记在 `PRAGMA user_version`（v4.4 之前的库为 0）。每步单独事务、与版本号一起提交；任一步失败时整库用本次启动备份恢复并提示。所有步骤按“列不存在才添加”编写，所以任何时期的旧库都从第 1 步顺序执行。**新增字段**：改实体与 `MaterialMgmtDbContext` 后，在列表末尾追加一步，不要修改已发布的步骤；空库按当前模型直接建表并标为最新版本
+- `alembic_version` 仍维护为 `0006`，Python 版工具据此识别库结构
 - `formula_items` 对 `(formula_id, sequence)` 有唯一索引；调整步骤顺序时用 `FormulaSequence.BuildTwoPhase` 先写入临时序号再写 1..n，避免中间态冲突
 - 兼容 PyQt v3.0 的 `material_mgmt.db`，可直接拷贝使用
 
@@ -241,7 +243,8 @@ dotnet run --project MaterialMgmt.App
 - `CodeServiceTests` — MAT/FML 编码生成
 - `FormulaSequenceTests` — 步骤顺序两阶段写入
 - `OrderRulesTests` — 进行中工单不可删除
-- `DbSmokeTests` — 数据库初始化
+- `DbSmokeTests` — 数据库初始化（临时目录，不碰 `data/` 下的在用库）
+- `SchemaMigrationTests` — v3.0 / v4.1 / v4.2.2 三个时期的库升级到最新、重复启动不再迁移、失败回滚与恢复备份
 
 ## 2.11 扩展建议
 

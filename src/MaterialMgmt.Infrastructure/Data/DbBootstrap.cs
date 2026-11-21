@@ -4,10 +4,11 @@ using Microsoft.Extensions.Logging;
 using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Auth;
 using MaterialMgmt.Core.Entities;
+using MaterialMgmt.Infrastructure.Data.Migrations;
 
 namespace MaterialMgmt.Infrastructure.Data;
 
-/// <summary>启动初始化：建表（空库）、Alembic 兼容校验、角色迁移、种子账号、WAL。</summary>
+/// <summary>启动初始化：备份、建表（空库）或按版本迁移（旧库）、有效记录索引、种子账号与角色迁移、WAL。</summary>
 public sealed class DbBootstrap
 {
     private readonly IAppPaths _paths;
@@ -37,14 +38,46 @@ public sealed class DbBootstrap
         Directory.CreateDirectory(_paths.LogsDir);
 
         // 任何迁移 / 种子写入之前先备份，迁移失败时可回滚到启动前状态
-        await BackupAsync("startup", ct);
+        var startupBackup = await BackupAsync("startup", ct);
 
-        await using var db = await _factory.CreateDbContextAsync(ct);
-        await EnsurePragmasAsync(db, ct);
-        await EnsureSchemaAsync(db, ct);
-        await EnsureIntegrityAsync(db, ct);
-        await SeedDefaultsAsync(db, ct);
+        await using (var db = await _factory.CreateDbContextAsync(ct))
+        {
+            await EnsurePragmasAsync(db, ct);
+            try
+            {
+                await EnsureSchemaAsync(db, ct);
+            }
+            catch (Exception ex) when (startupBackup is not null)
+            {
+                await db.DisposeAsync();
+                RestoreFrom(startupBackup);
+                throw new InvalidOperationException(
+                    $"数据库升级失败，已自动恢复为启动前的备份，数据未受影响。\n原因：{ex.GetBaseException().Message}", ex);
+            }
+        }
+
+        await using (var db = await _factory.CreateDbContextAsync(ct))
+        {
+            await TryCreateValidIndexAsync(db, ct);
+            await SeedDefaultsAsync(db, ct);
+        }
         _logger.LogInformation("数据库初始化完成：{Path}", _paths.DatabasePath);
+    }
+
+    /// <summary>结构迁移步骤；测试可替换以模拟失败。</summary>
+    internal IReadOnlyList<SchemaMigration> Migrations { get; set; } = SchemaMigrations.All;
+
+    /// <summary>用备份覆盖当前库。调用前必须释放所有指向该库的连接。</summary>
+    private void RestoreFrom(string backup)
+    {
+        SqliteConnection.ClearAllPools();
+        var db = _paths.DatabasePath;
+        foreach (var side in new[] { db + "-wal", db + "-shm" })
+        {
+            if (File.Exists(side)) File.Delete(side);
+        }
+        File.Copy(backup, db, overwrite: true);
+        _logger.LogError("数据库升级失败，已从 {Backup} 恢复", backup);
     }
 
     /// <summary>每种备份原因（startup / exit / manual）各自保留的份数。</summary>
@@ -139,7 +172,7 @@ public sealed class DbBootstrap
 
     private async Task EnsureSchemaAsync(MaterialMgmtDbContext db, CancellationToken ct)
     {
-        var conn = db.Database.GetDbConnection();
+        var conn = (SqliteConnection)db.Database.GetDbConnection();
         await conn.OpenAsync(ct);
 
         var tables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -153,106 +186,27 @@ public sealed class DbBootstrap
 
         if (tables.Count == 0 || !tables.Contains("users"))
         {
-            _logger.LogInformation("空库或缺少业务表，使用 EnsureCreated 建表");
+            _logger.LogInformation("空库或缺少业务表，按当前模型建表（结构版本 {Version}）", SchemaMigrations.Latest);
             await db.Database.EnsureCreatedAsync(ct);
-            await StampAlembicAsync(db, "0006", ct);
+            await using (var tx = conn.BeginTransaction())
+            {
+                await new MigrationContext(conn, tx, ct).StampAlembicAsync(SchemaMigrations.AlembicHead);
+                await tx.CommitAsync(ct);
+            }
+            await SchemaMigrator.SetVersionAsync(conn, SchemaMigrations.Latest, ct);
             return;
         }
 
-        if (!tables.Contains("alembic_version"))
-        {
-            var stamp = await InferStampAsync(db, ct);
-            _logger.LogInformation("检测到无 alembic_version 的旧库，标记为 {Rev}", stamp);
-            await StampAlembicAsync(db, stamp, ct);
-        }
-
-        await EnsureWorkOrderColumnsAsync(db, ct);
-    }
-
-    private static async Task<string> InferStampAsync(MaterialMgmtDbContext db, CancellationToken ct)
-    {
-        var cols = await GetColumnsAsync(db, "work_orders", ct);
-        if (cols.Contains("coating_exception_note")) return "0006";
-        if (cols.Contains("temperature")) return "0005";
-        return "0004";
-    }
-
-    private static async Task EnsureWorkOrderColumnsAsync(MaterialMgmtDbContext db, CancellationToken ct)
-    {
-        var cols = await GetColumnsAsync(db, "work_orders", ct);
-        var alters = new List<string>();
-        void Need(string col, string ddl)
-        {
-            if (!cols.Contains(col)) alters.Add($"ALTER TABLE work_orders ADD COLUMN {ddl}");
-        }
-
-        Need("temperature", "temperature REAL");
-        Need("humidity", "humidity REAL");
-        Need("production_no", "production_no VARCHAR(64)");
-        Need("d50", "d50 REAL");
-        Need("mixing_exception", "mixing_exception BOOLEAN");
-        Need("base_film", "base_film VARCHAR(128)");
-        Need("batch_no", "batch_no VARCHAR(64)");
-        Need("thickness", "thickness REAL");
-        Need("coating_exception", "coating_exception BOOLEAN");
-        Need("mixing_exception_note", "mixing_exception_note VARCHAR(512)");
-        Need("coating_exception_note", "coating_exception_note VARCHAR(512)");
-
-        foreach (var sql in alters)
-            await db.Database.ExecuteSqlRawAsync(sql, cancellationToken: ct);
-
-        // 软删除列
-        var woCols = await GetColumnsAsync(db, "work_orders", ct);
-        if (!woCols.Contains("deleted_at"))
-            await db.Database.ExecuteSqlRawAsync("ALTER TABLE work_orders ADD COLUMN deleted_at DATETIME", cancellationToken: ct);
-        if (!woCols.Contains("deleted_by"))
-            await db.Database.ExecuteSqlRawAsync("ALTER TABLE work_orders ADD COLUMN deleted_by VARCHAR(64)", cancellationToken: ct);
-
-        // 称重记录：限值/原料快照 + 作废留痕
-        var wrCols = await GetColumnsAsync(db, "weight_records", ct);
-        async Task AddWr(string col, string ddl)
-        {
-            if (!wrCols.Contains(col))
-                await db.Database.ExecuteSqlRawAsync($"ALTER TABLE weight_records ADD COLUMN {ddl}", cancellationToken: ct);
-        }
-        await AddWr("weight_min_snapshot", "weight_min_snapshot REAL");
-        await AddWr("weight_max_snapshot", "weight_max_snapshot REAL");
-        await AddWr("material_code_snapshot", "material_code_snapshot VARCHAR(64)");
-        await AddWr("material_name_snapshot", "material_name_snapshot VARCHAR(128)");
-        await AddWr("voided_at", "voided_at DATETIME");
-        await AddWr("voided_by", "voided_by VARCHAR(64)");
-        await AddWr("void_reason", "void_reason VARCHAR(256)");
-        await AddWr("scan_source", "scan_source VARCHAR(16)");
-
-        var fcols = await GetColumnsAsync(db, "formulas", ct);
-        if (!fcols.Contains("code"))
-            await db.Database.ExecuteSqlRawAsync("ALTER TABLE formulas ADD COLUMN code VARCHAR(64)", cancellationToken: ct);
+        var from = await SchemaMigrator.GetVersionAsync(conn, ct);
+        var applied = await SchemaMigrator.MigrateAsync(conn, _logger, Migrations, ct);
+        if (applied.Count > 0)
+            _logger.LogInformation("数据库结构已从版本 {From} 升级到 {To}", from, applied[^1]);
     }
 
     /// <summary>
-    /// 数据完整性兜底：对旧记录回填快照（取当前配方限值，尽力而为），
-    /// 并创建“同工单同步骤至多一条有效记录”的部分唯一索引。
-    /// 若旧数据已存在重复有效记录导致建索引失败，只记警告，不阻断启动。
+    /// “同工单同步骤至多一条有效记录”的部分唯一索引。每次启动都尝试，而不放进迁移：
+    /// 旧数据存在重复有效记录时会失败，只记警告、不阻断启动，等系统管理员在首页修复后再建。
     /// </summary>
-    private async Task EnsureIntegrityAsync(MaterialMgmtDbContext db, CancellationToken ct)
-    {
-        try
-        {
-            await db.Database.ExecuteSqlRawAsync(@"
-UPDATE weight_records SET
-  weight_min_snapshot = (SELECT fi.weight_min FROM formula_items fi WHERE fi.id = weight_records.formula_item_id),
-  weight_max_snapshot = (SELECT fi.weight_max FROM formula_items fi WHERE fi.id = weight_records.formula_item_id),
-  material_code_snapshot = (SELECT m.code FROM formula_items fi JOIN materials m ON m.id = fi.material_id WHERE fi.id = weight_records.formula_item_id),
-  material_name_snapshot = (SELECT m.name FROM formula_items fi JOIN materials m ON m.id = fi.material_id WHERE fi.id = weight_records.formula_item_id)
-WHERE weight_min_snapshot IS NULL AND weight_max_snapshot IS NULL", cancellationToken: ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "回填称重记录快照失败（已忽略）");
-        }
-
-        await TryCreateValidIndexAsync(db, ct);
-    }
 
     /// <summary>重复有效记录修复后由界面调用，重新创建唯一索引。</summary>
     public async Task<bool> TryCreateValidIndexAsync(CancellationToken ct = default)
@@ -277,33 +231,6 @@ WHERE weight_min_snapshot IS NULL AND weight_max_snapshot IS NULL", cancellation
             _logger.LogWarning(ex, "创建 ux_weight_records_valid 失败：旧数据存在同一步骤的重复有效记录，等待系统管理员在首页修复");
         }
         return ValidIndexReady;
-    }
-
-    private static async Task StampAlembicAsync(MaterialMgmtDbContext db, string rev, CancellationToken ct)
-    {
-        await db.Database.ExecuteSqlRawAsync(
-            "CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)",
-            cancellationToken: ct);
-        await db.Database.ExecuteSqlRawAsync("DELETE FROM alembic_version", cancellationToken: ct);
-        await db.Database.ExecuteSqlRawAsync(
-            "INSERT INTO alembic_version (version_num) VALUES ({0})",
-            new object[] { rev },
-            ct);
-    }
-
-    private static async Task<HashSet<string>> GetColumnsAsync(
-        MaterialMgmtDbContext db, string table, CancellationToken ct)
-    {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var conn = db.Database.GetDbConnection();
-        if (conn.State != System.Data.ConnectionState.Open)
-            await conn.OpenAsync(ct);
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"PRAGMA table_info({table})";
-        await using var reader = await cmd.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct))
-            set.Add(reader.GetString(1));
-        return set;
     }
 
     private async Task SeedDefaultsAsync(MaterialMgmtDbContext db, CancellationToken ct)

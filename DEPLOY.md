@@ -47,8 +47,8 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 1. **先退出**旧版与新版程序  
 2. **备份**旧版整个 `data\`（建议再留一份只读副本，勿直接改备份）  
 3. 将旧版 `data\material_mgmt.db`（及 `-wal`/`-shm`）拷到新版同级 `data\`  
-4. 启动 WPF v4.2；启动时会：
-   - 校验/补齐 schema  
+4. 启动新版；启动时会：
+   - 先把库备份到 `data\backup\`，再按结构版本（`PRAGMA user_version`）依次执行缺少的升级步骤；任一步失败会自动恢复为该备份并提示，数据不受影响  
    - **角色迁移**：`admin`→`system_admin`，`operator`→`business`，**删除 `root`**  
    - 若库中无任何可升为系统管理员的账号，迁移会**中止**并报错（避免无管理员）  
 5. `settings.ini` 可选拷贝；COM 口建议在新机确认一次  

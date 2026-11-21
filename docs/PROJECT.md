@@ -105,7 +105,8 @@ Material_Mgmt_wpf/
 | 扫码串口 | `Infrastructure/Hardware/BarcodeSerialService.cs` | USB COM 按 CR/LF 收整帧 |
 | 扫码 HID | `Infrastructure/Hardware/BarcodeInputService.cs` | 键盘楔入聚合（应急回退） |
 | 配置 | `Infrastructure/Services/ConfigService.cs` | `settings.ini` 读写 |
-| 数据库 | `Infrastructure/Data/DbBootstrap.cs` | 建库、启动时补列、种子账号、WAL、v4.2 角色迁移、启动 / 退出 / 手动备份、有效记录唯一索引 |
+| 数据库 | `Infrastructure/Data/DbBootstrap.cs` | 建库、调用结构迁移（失败时用启动备份恢复）、种子账号、WAL、v4.2 角色迁移、启动 / 退出 / 手动备份、有效记录唯一索引 |
+| 结构迁移 | `Infrastructure/Data/Migrations/SchemaMigrations.cs` + `SchemaMigrator.cs` | 有序迁移列表，版本记在 `PRAGMA user_version`；每步一个事务、按“列不存在才加”编写，任何时期的旧库都可从第 1 步执行；新字段在列表末尾追加一步（单测覆盖 v3.0 / v4.1 / v4.2.2 三个时期） |
 | 工单 | `Infrastructure/Services/OrderService.cs` | 保存称重（含快照、扫码来源）/完成/作废有效记录（含原因）；进行中工单及进度（`ActiveOrders`）；配方进行中引用校验；重复有效记录修复；删除走 `OrderRules` |
 | 配方 | `Infrastructure/Services/FormulaService.cs` | 含复制配方 |
 | 配方序号 | `Core/Formulas/FormulaSequence.cs` | `(formula_id, sequence)` 唯一索引的两阶段写入 |
