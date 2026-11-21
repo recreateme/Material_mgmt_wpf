@@ -1,9 +1,11 @@
+using System.Globalization;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Media;
+using MaterialMgmt.App.Controls;
 using MaterialMgmt.App.Services;
 using MaterialMgmt.App.Themes;
+using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Auth;
 
 namespace MaterialMgmt.App.Views;
@@ -11,57 +13,41 @@ namespace MaterialMgmt.App.Views;
 /// <summary>称量专用子窗：开始称量 / 称量中 / 我的工单。</summary>
 public sealed class WeighHostWindow : Window
 {
+    private const string GeometrySection = "weigh_window";
+
     private readonly NavigationService _nav;
     private readonly DeviceHub _devices;
-    private readonly ListBox _navList = new();
+    private readonly IConfigService _config;
+    private readonly NavMenu _navMenu = new();
     private readonly ContentControl _host = new();
-    private readonly TextBlock _scaleDot = new() { Text = "● 电子秤：—", Margin = new Thickness(0, 0, 16, 0), FontSize = 12 };
-    private readonly TextBlock _scanDot = new() { Text = "● 扫码枪：—", FontSize = 12 };
-    private readonly List<NavItem> _items = new();
-    private bool _syncingNav;
 
     public ContentControl Host => _host;
 
-    public WeighHostWindow(NavigationService nav, DeviceHub devices, CurrentUser user)
+    public WeighHostWindow(NavigationService nav, DeviceHub devices, IConfigService config, CurrentUser user)
     {
         _nav = nav;
         _devices = devices;
+        _config = config;
         Title = $"称量工作台 — {user.DisplayName}";
-        WindowSizing.Fit(this, 1100, 720, 880, 560);
-        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        RestoreGeometry();
         BuildUi();
         _nav.AttachHost(_host);
         _nav.Navigated += OnNavigated;
-        PreviewKeyDown += OnPreviewKeyDown;
-        _devices.ScaleStatusChanged += () => Dispatcher.Invoke(UpdateDeviceUi);
-        _devices.ScannerStatusChanged += () => Dispatcher.Invoke(UpdateDeviceUi);
-        UpdateDeviceUi();
-        RebuildNav();
+        PreviewKeyDown += (_, e) => HidKeyMapper.Forward(_devices, e);
+        Closing += (_, _) => SaveGeometry();
+        _navMenu.SetItems(new[]
+        {
+            new NavMenuItem("开始称量", NavGlyphs.StartWeigh, AppPage.SessionSelect),
+            new NavMenuItem("我的工单", NavGlyphs.MyOrders, AppPage.OperatorHistory)
+        });
     }
 
     private void BuildUi()
     {
         var root = new DockPanel();
 
-        var status = new Border
-        {
-            Background = UiTheme.Brush(UiTheme.PanelAlt),
-            BorderBrush = UiTheme.Brush(UiTheme.Border),
-            BorderThickness = new Thickness(0, 1, 0, 0),
-            Padding = new Thickness(14, 7, 14, 7)
-        };
+        var status = new DeviceStatusBar(_devices, _config, note: "称量进行中时扫码仅进入本窗");
         DockPanel.SetDock(status, Dock.Bottom);
-        var statusRow = new StackPanel { Orientation = Orientation.Horizontal };
-        statusRow.Children.Add(_scaleDot);
-        statusRow.Children.Add(_scanDot);
-        statusRow.Children.Add(new TextBlock
-        {
-            Text = "  ·  称量进行中时扫码仅进入本窗",
-            FontSize = UiTheme.FontCaption,
-            Foreground = UiTheme.Brush(UiTheme.Muted),
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        status.Child = statusRow;
         root.Children.Add(status);
 
         var nav = new Border { Width = 188, Background = UiTheme.Brush(UiTheme.NavBg) };
@@ -84,15 +70,10 @@ public sealed class WeighHostWindow : Window
         });
         DockPanel.SetDock(header, Dock.Top);
 
-        _navList.Background = Brushes.Transparent;
-        _navList.BorderThickness = new Thickness(0);
-        _navList.Foreground = UiTheme.Brush(UiTheme.NavText);
-        if (TryFindResource("NavListBoxItemStyle") is Style itemStyle)
-            _navList.ItemContainerStyle = itemStyle;
-        _navList.SelectionChanged += OnNavChanged;
+        _navMenu.PageRequested += OnPageRequested;
 
         navStack.Children.Add(header);
-        navStack.Children.Add(_navList);
+        navStack.Children.Add(_navMenu);
         nav.Child = navStack;
         root.Children.Add(nav);
 
@@ -101,75 +82,58 @@ public sealed class WeighHostWindow : Window
         Content = root;
     }
 
-    private void RebuildNav()
-    {
-        _items.Clear();
-        _items.Add(new NavItem("开始称量", AppPage.SessionSelect));
-        _items.Add(new NavItem("我的工单", AppPage.OperatorHistory));
-        _navList.ItemsSource = null;
-        _navList.ItemsSource = _items;
-        _navList.DisplayMemberPath = nameof(NavItem.Title);
-        _navList.SelectedIndex = 0;
-    }
-
     private void OnNavigated(AppPage page)
-    {
-        var highlight = page == AppPage.WeighSession ? AppPage.SessionSelect : page;
-        var item = _items.FirstOrDefault(x => x.Page == highlight);
-        if (item is null) return;
-        _syncingNav = true;
-        try { _navList.SelectedItem = item; }
-        finally { _syncingNav = false; }
-    }
+        => _navMenu.Highlight(page == AppPage.WeighSession ? AppPage.SessionSelect : page);
 
-    private void OnNavChanged(object sender, SelectionChangedEventArgs e)
+    private void OnPageRequested(AppPage page)
     {
-        if (_syncingNav) return;
-        if (_navList.SelectedItem is not NavItem item) return;
         if (_nav.Current == AppPage.WeighSession)
         {
-            MessageBox.Show(this, "请先完成、暂停（左上角“暂停并返回”）或取消当前称量后再切换页面。", "提示");
-            _syncingNav = true;
-            try { _navList.SelectedItem = _items.First(x => x.Page == AppPage.SessionSelect); }
-            finally { _syncingNav = false; }
+            UiFeedback.Warn("请先完成、暂停（左上角“暂停并返回”）或取消当前称量后再切换页面。");
+            _navMenu.Highlight(AppPage.SessionSelect);
             return;
         }
-        _nav.Navigate(item.Page);
+        _nav.Navigate(page);
     }
 
-    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    /// <summary>恢复上次的大小和位置；没有记录或已不在任何屏幕内（换了显示器）时按工作区自适应居中。</summary>
+    private void RestoreGeometry()
     {
-        if (!_devices.ShouldAcceptHidKeys) return;
-        var text = e.Key is Key.Enter or Key.Return ? null : KeyToText(e);
-        _devices.Barcode.OnKey(e.Key is Key.Enter or Key.Return, text);
+        WindowSizing.Fit(this, 1100, 720, 880, 560);
+        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+
+        double Read(string key) => double.TryParse(_config.GetValue(GeometrySection, key, ""),
+            NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : double.NaN;
+        var (left, top, width, height) = (Read("left"), Read("top"), Read("width"), Read("height"));
+        if (double.IsNaN(left) || double.IsNaN(top) || double.IsNaN(width) || double.IsNaN(height)) return;
+        if (width < MinWidth || height < MinHeight) return;
+
+        var screen = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+        if (!screen.Contains(new Rect(left, top, width, height))) return;
+
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        (Left, Top, Width, Height) = (left, top, width, height);
+        if (_config.GetValue(GeometrySection, "maximized", "false") == "true")
+            WindowState = WindowState.Maximized;
     }
 
-    private static string? KeyToText(KeyEventArgs e)
+    private void SaveGeometry()
     {
-        if (e.Key >= Key.D0 && e.Key <= Key.D9) return ((char)('0' + (e.Key - Key.D0))).ToString();
-        if (e.Key >= Key.NumPad0 && e.Key <= Key.NumPad9) return ((char)('0' + (e.Key - Key.NumPad0))).ToString();
-        if (e.Key >= Key.A && e.Key <= Key.Z)
+        var r = WindowState == WindowState.Normal ? new Rect(Left, Top, ActualWidth, ActualHeight) : RestoreBounds;
+        if (r.IsEmpty || r.Width < 100 || r.Height < 100) return;
+        string F(double v) => Math.Round(v).ToString(CultureInfo.InvariantCulture);
+        try
         {
-            var c = (char)('A' + (e.Key - Key.A));
-            return Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? c.ToString() : char.ToLowerInvariant(c).ToString();
+            _config.SetValue(GeometrySection, "left", F(r.Left));
+            _config.SetValue(GeometrySection, "top", F(r.Top));
+            _config.SetValue(GeometrySection, "width", F(r.Width));
+            _config.SetValue(GeometrySection, "height", F(r.Height));
+            _config.SetValue(GeometrySection, "maximized", WindowState == WindowState.Maximized ? "true" : "false");
         }
-        if (e.Key is Key.OemMinus or Key.Subtract)
-            return Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? "_" : "-";
-        if (e.Key == Key.OemPeriod) return ".";
-        return null;
+        catch (IOException)
+        {
+            // 配置文件被占用时放弃保存，不影响关闭
+        }
     }
-
-    private void UpdateDeviceUi()
-    {
-        _scaleDot.Text = _devices.IsScaleConnected
-            ? $"● 电子秤：已连接（{_devices.ConnectedPort}）"
-            : "● 电子秤：未连接";
-        _scaleDot.Foreground = UiTheme.Brush(_devices.IsScaleConnected ? UiTheme.Success : UiTheme.Danger);
-        var label = _devices.ScannerSourceLabel;
-        _scanDot.Text = !string.IsNullOrEmpty(_devices.LastScanCode) && _devices.IsScannerListening
-            ? $"● 扫码：{_devices.LastScanCode}（{label}）"
-            : $"● 扫码枪：{label}";
-    }
-
-    private sealed record NavItem(string Title, AppPage Page);
 }

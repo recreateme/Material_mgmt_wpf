@@ -63,7 +63,8 @@ public sealed class WeighWorkspace
 
         _nav = new NavigationService();
         RegisterWeighPages(_nav);
-        _window = new WeighHostWindow(_nav, _sp.GetRequiredService<DeviceHub>(), user);
+        _window = new WeighHostWindow(_nav, _sp.GetRequiredService<DeviceHub>(),
+            _sp.GetRequiredService<IConfigService>(), user);
         _window.Closed += OnWindowClosed;
         _window.Show();
         _audit.Log("weigh_window", "打开称量窗", user.Username);

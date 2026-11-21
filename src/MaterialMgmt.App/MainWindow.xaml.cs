@@ -1,15 +1,13 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Media;
 using System.Windows.Threading;
+using MaterialMgmt.App.Controls;
 using MaterialMgmt.App.Services;
 using MaterialMgmt.App.Themes;
 using MaterialMgmt.App.Views.Dialogs;
 using MaterialMgmt.App.Views.Panels;
 using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Auth;
-using MaterialMgmt.Infrastructure.Hardware;
 
 namespace MaterialMgmt.App;
 
@@ -22,15 +20,12 @@ public partial class MainWindow : Window
     private readonly DeviceHub _devices;
     private readonly WeighWorkspace _weigh;
     private readonly IServiceProvider _sp;
-    private Button? _openWeighBtn;
 
-    private readonly ListBox _navList = new();
+    private readonly NavMenu _navMenu = new();
     private readonly ContentControl _host = new();
     private readonly TextBlock _userName = new();
     private readonly TextBlock _userRole = new();
-    private readonly TextBlock _scaleDot = new() { Text = "● 电子秤：未连接", Margin = new Thickness(0, 0, 16, 0) };
-    private readonly TextBlock _scanDot = new() { Text = "● 扫码枪：空闲" };
-    private readonly List<NavItem> _navItems = new();
+    private DeviceStatusBar _statusBar = null!;
     private readonly DispatcherTimer _deviceTimer = new() { Interval = TimeSpan.FromSeconds(3) };
 
     public MainWindow(
@@ -54,16 +49,10 @@ public partial class MainWindow : Window
         ApplyGeometry();
         BuildUi();
         RegisterPages();
-        PreviewKeyDown += OnPreviewKeyDown;
+        PreviewKeyDown += (_, e) => HidKeyMapper.Forward(_devices, e);
         WireBarcodeRouting();
 
-        _devices.ScaleStatusChanged += () => Dispatcher.Invoke(UpdateDeviceUi);
-        _devices.ScannerStatusChanged += () => Dispatcher.Invoke(UpdateDeviceUi);
-        _deviceTimer.Tick += (_, _) =>
-        {
-            _devices.Tick(_config);
-            UpdateDeviceUi();
-        };
+        _deviceTimer.Tick += (_, _) => _devices.Tick(_config);
         _deviceTimer.Start();
 
         Closing += (_, e) =>
@@ -109,13 +98,11 @@ public partial class MainWindow : Window
         _userRole.Text = RoleLabels.ToDisplay(user.Role);
         _nav.ClearCache();
         RebuildNav(user);
-        if (_openWeighBtn is not null)
-            _openWeighBtn.Visibility = user.IsBusiness() ? Visibility.Visible : Visibility.Collapsed;
         _nav.Navigate(AppPage.Home);
 
         // 登录后：电子秤自动识别 + 扫码枪按配置连接
         _devices.BeginAutoConnectAfterLogin(_config);
-        UpdateDeviceUi();
+        _statusBar.Refresh();
     }
 
     private void ApplyGeometry()
@@ -131,21 +118,9 @@ public partial class MainWindow : Window
     {
         var root = new DockPanel();
 
-        var status = new Border
-        {
-            Background = UiTheme.Brush(UiTheme.PanelAlt),
-            BorderBrush = UiTheme.Brush(UiTheme.Border),
-            BorderThickness = new Thickness(0, 1, 0, 0),
-            Padding = new Thickness(14, 7, 14, 7)
-        };
-        DockPanel.SetDock(status, Dock.Bottom);
-        _scaleDot.FontSize = UiTheme.FontCaption;
-        _scanDot.FontSize = UiTheme.FontCaption;
-        var statusRow = new StackPanel { Orientation = Orientation.Horizontal };
-        statusRow.Children.Add(_scaleDot);
-        statusRow.Children.Add(_scanDot);
-        status.Child = statusRow;
-        root.Children.Add(status);
+        _statusBar = new DeviceStatusBar(_devices, _config, () => _weigh.ExclusiveBarcode);
+        DockPanel.SetDock(_statusBar, Dock.Bottom);
+        root.Children.Add(_statusBar);
 
         var nav = new Border
         {
@@ -182,9 +157,6 @@ public partial class MainWindow : Window
 
         var footer = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
         DockPanel.SetDock(footer, Dock.Bottom);
-        _openWeighBtn = UiTheme.NavFooterButton("打开称量窗");
-        _openWeighBtn.Visibility = Visibility.Collapsed;
-        _openWeighBtn.Click += (_, _) => _weigh.Open(AppPage.SessionSelect);
         var pw = UiTheme.NavFooterButton("修改密码");
         pw.Click += (_, _) =>
         {
@@ -194,20 +166,14 @@ public partial class MainWindow : Window
         };
         var logout = UiTheme.NavFooterButton("退出登录", logout: true);
         logout.Click += (_, _) => DoLogout();
-        footer.Children.Add(_openWeighBtn);
         footer.Children.Add(pw);
         footer.Children.Add(logout);
 
-        _navList.Background = Brushes.Transparent;
-        _navList.BorderThickness = new Thickness(0);
-        _navList.Foreground = UiTheme.Brush(UiTheme.NavText);
-        if (TryFindResource("NavListBoxItemStyle") is Style itemStyle)
-            _navList.ItemContainerStyle = itemStyle;
-        _navList.SelectionChanged += OnNavChanged;
+        _navMenu.PageRequested += OnPageRequested;
 
         navStack.Children.Add(header);
         navStack.Children.Add(footer);
-        navStack.Children.Add(_navList);
+        navStack.Children.Add(_navMenu);
         nav.Child = navStack;
         root.Children.Add(nav);
 
@@ -218,17 +184,8 @@ public partial class MainWindow : Window
         _nav.Navigated += OnNavigated;
     }
 
-    private bool _syncingNav;
-
     private void OnNavigated(AppPage page)
-    {
-        var highlight = page == AppPage.FormulaEditor ? AppPage.Formulas : page;
-        var item = _navItems.FirstOrDefault(x => x.Page == highlight);
-        if (item is null) return;
-        _syncingNav = true;
-        try { _navList.SelectedItem = item; }
-        finally { _syncingNav = false; }
-    }
+        => _navMenu.Highlight(page == AppPage.FormulaEditor ? AppPage.Formulas : page);
 
     private void RegisterPages()
     {
@@ -246,85 +203,39 @@ public partial class MainWindow : Window
 
     private void RebuildNav(CurrentUser user)
     {
-        _navItems.Clear();
-        void Add(string title, AppPage page)
+        var items = new List<NavMenuItem>();
+        void Add(string title, string glyph, AppPage page, string group)
         {
             if (NavigationService.CanAccess(page, user))
-                _navItems.Add(new NavItem(title, page));
+                items.Add(new NavMenuItem(title, glyph, page, Group: group));
         }
-        // 称量相关页仅在称量窗；主窗保留主数据与工单历史
-        Add("首页", AppPage.Home);
-        Add("原材料", AppPage.Materials);
-        Add("配方管理", AppPage.Formulas);
-        Add("工单历史", AppPage.AdminHistory);
-        Add("用户管理", AppPage.UserMgmt);
-        Add("系统设置", AppPage.Settings);
-        _navList.ItemsSource = null;
-        _navList.ItemsSource = _navItems;
-        _navList.DisplayMemberPath = "Title";
-        if (_navItems.Count > 0) _navList.SelectedIndex = 0;
-    }
 
-    private void OnNavChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_syncingNav) return;
-        if (_navList.SelectedItem is not NavItem item) return;
-        var user = _auth.CurrentUser;
-        if (user is null || !NavigationService.CanAccess(item.Page, user)) return;
-        _nav.Navigate(item.Page);
-    }
-
-    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (!_devices.ShouldAcceptHidKeys) return;
-        var text = e.Key == Key.Enter || e.Key == Key.Return ? null : KeyToText(e);
-        _devices.Barcode.OnKey(e.Key is Key.Enter or Key.Return, text);
-    }
-
-    private static string? KeyToText(KeyEventArgs e)
-    {
-        // 仅处理可打印字符；扫码枪通常输出数字/字母
-        if (e.Key >= Key.D0 && e.Key <= Key.D9) return ((char)('0' + (e.Key - Key.D0))).ToString();
-        if (e.Key >= Key.NumPad0 && e.Key <= Key.NumPad9) return ((char)('0' + (e.Key - Key.NumPad0))).ToString();
-        if (e.Key >= Key.A && e.Key <= Key.Z)
+        // 称量相关页在独立称量窗；主窗的“开始称量 / 我的工单”负责打开称量窗
+        Add("首页", NavGlyphs.Home, AppPage.Home, "日常");
+        if (user.IsBusiness())
         {
-            var c = (char)('A' + (e.Key - Key.A));
-            return Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? c.ToString() : char.ToLowerInvariant(c).ToString();
+            items.Add(new NavMenuItem("开始称量", NavGlyphs.StartWeigh,
+                Invoke: () => _weigh.Open(AppPage.SessionSelect), Group: "日常"));
+            items.Add(new NavMenuItem("我的工单", NavGlyphs.MyOrders,
+                Invoke: () => _weigh.Open(AppPage.OperatorHistory), Group: "日常"));
         }
-        if (e.Key == Key.OemMinus || e.Key == Key.Subtract)
-            return Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? "_" : "-";
-        if (e.Key == Key.OemPeriod) return ".";
-        return null;
+        Add("原材料", NavGlyphs.Materials, AppPage.Materials, "管理");
+        Add("配方管理", NavGlyphs.Formulas, AppPage.Formulas, "管理");
+        Add("工单历史", NavGlyphs.History, AppPage.AdminHistory, "管理");
+        Add("用户管理", NavGlyphs.Users, AppPage.UserMgmt, "管理");
+        Add("系统设置", NavGlyphs.Settings, AppPage.Settings, "管理");
+        _navMenu.SetItems(items);
     }
 
-    private void UpdateDeviceUi()
+    private void OnPageRequested(AppPage page)
     {
-        _scaleDot.Text = _devices.IsScaleConnected
-            ? $"● 电子秤：已连接（{_devices.ConnectedPort}）"
-            : _devices.IsDiscovering || _devices.ScaleLastError.Contains("识别", StringComparison.Ordinal)
-                ? $"● 电子秤：{_devices.ScaleLastError}"
-                : string.IsNullOrEmpty(_devices.ScaleLastError)
-                    ? "● 电子秤：未连接"
-                    : $"● 电子秤：未连接 — {_devices.ScaleLastError}";
-        _scaleDot.Foreground = UiTheme.Brush(_devices.IsScaleConnected ? UiTheme.Success : UiTheme.Danger);
-        var scanLabel = _devices.ScannerSourceLabel;
-        var exclusive = _weigh.ExclusiveBarcode ? " · 称量独占" : "";
-        if (!string.IsNullOrEmpty(_devices.LastScanCode) && _devices.IsScannerListening)
-            _scanDot.Text = $"● 扫码：{_devices.LastScanCode}（{scanLabel}）{exclusive}";
-        else if (_devices.IsScannerSerialConnected)
-            _scanDot.Text = $"● 扫码枪：已连接（{scanLabel}）{exclusive}";
-        else if (!string.IsNullOrEmpty(_devices.ScannerLastError))
-            _scanDot.Text = $"● 扫码枪：{_devices.ScannerLastError}";
-        else
-            _scanDot.Text = _devices.IsScannerListening
-                ? $"● 扫码枪：监听中（{scanLabel}）{exclusive}"
-                : $"● 扫码枪：空闲（{scanLabel}）{exclusive}";
-        var scanOk = _devices.IsScannerSerialConnected
-                     || scanLabel.Contains("HID", StringComparison.Ordinal)
-                     || scanLabel.Contains("关闭", StringComparison.Ordinal);
-        _scanDot.Foreground = UiTheme.Brush(scanOk && string.IsNullOrEmpty(_devices.ScannerLastError)
-            ? UiTheme.Success
-            : UiTheme.Warning);
+        var user = _auth.CurrentUser;
+        if (user is null || !NavigationService.CanAccess(page, user))
+        {
+            _navMenu.Highlight(_nav.Current);
+            return;
+        }
+        _nav.Navigate(page);
     }
 
     private void DoLogout()
@@ -350,6 +261,4 @@ public partial class MainWindow : Window
             Application.Current.Shutdown(0);
         }
     }
-
-    private sealed record NavItem(string Title, AppPage Page);
 }

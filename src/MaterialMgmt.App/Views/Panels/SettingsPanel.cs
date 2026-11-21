@@ -16,6 +16,7 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
     private readonly DeviceHub _devices;
     private readonly SoundService _sound;
     private readonly CheckBox _soundOn = new() { Content = "称量时播放提示音", Margin = new Thickness(0, 8, 0, 8) };
+    private readonly ComboBox _soundVolume = new() { Width = 100 };
     private readonly ComboBox _ports = new() { Width = 180, Height = 30 };
     private readonly CheckBox _auto = new() { Content = "登录后自动识别并连接电子秤", Margin = new Thickness(0, 8, 0, 8) };
     private readonly TextBlock _scaleStatus = new() { Margin = new Thickness(0, 8, 0, 0) };
@@ -44,6 +45,7 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
         ReloadPorts();
         _auto.IsChecked = _config.AutoConnect;
         _soundOn.IsChecked = _config.SoundEnabled;
+        _soundVolume.SelectedValue = _sound.Volume;
         _scannerEnabled.IsChecked = _config.ScannerEnabled;
         _scannerMode.SelectedValue = _config.ScannerMode;
         _scannerBaud.SelectedItem = _config.ScannerBaud.ToString();
@@ -83,6 +85,25 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
         });
         _soundOn.Click += (_, _) => _config.SoundEnabled = _soundOn.IsChecked == true;
         root.Children.Add(_soundOn);
+        var volumeRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+        volumeRow.Children.Add(new TextBlock
+        {
+            Text = "音量：", VerticalAlignment = VerticalAlignment.Center, Foreground = UiTheme.Brush(UiTheme.Muted)
+        });
+        _soundVolume.ItemsSource = new[]
+        {
+            new KeyValuePair<SoundVolume, string>(SoundVolume.Low, "低"),
+            new KeyValuePair<SoundVolume, string>(SoundVolume.Medium, "中"),
+            new KeyValuePair<SoundVolume, string>(SoundVolume.High, "高")
+        };
+        _soundVolume.DisplayMemberPath = "Value";
+        _soundVolume.SelectedValuePath = "Key";
+        _soundVolume.SelectionChanged += (_, _) =>
+        {
+            if (_soundVolume.SelectedValue is SoundVolume v) _sound.Volume = v;
+        };
+        volumeRow.Children.Add(_soundVolume);
+        root.Children.Add(volumeRow);
         var soundRow = new StackPanel { Orientation = Orientation.Horizontal };
         soundRow.Children.Add(new TextBlock
         {

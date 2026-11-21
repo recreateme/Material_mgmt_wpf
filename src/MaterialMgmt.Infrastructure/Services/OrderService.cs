@@ -218,6 +218,37 @@ public sealed class OrderService
         return new OrderSummary(wo.StartTime, wo.EndTime, valid, voided);
     }
 
+    /// <summary>全部进行中工单（未删除）及其进度，可按操作员过滤；按开始时间倒序。</summary>
+    public List<ActiveOrderInfo> ActiveOrders(int? operatorId = null)
+    {
+        using var db = _factory.CreateDbContext();
+        var query = db.WorkOrders.Where(w => w.Status == OrderRules.InProgress && w.DeletedAt == null);
+        if (operatorId is int op) query = query.Where(w => w.OperatorId == op);
+        return query
+            .OrderByDescending(w => w.StartTime)
+            .Select(w => new ActiveOrderInfo(
+                w.Id, w.FormulaId, w.Formula.Code, w.Formula.Name, w.OperatorId, w.Operator,
+                w.ProductionNo, w.StartTime,
+                db.WeightRecords.Where(r => r.WorkOrderId == w.Id && r.IsValid)
+                    .Select(r => r.FormulaItemId).Distinct().Count(),
+                db.FormulaItems.Count(i => i.FormulaId == w.FormulaId)))
+            .ToList();
+    }
+
+    /// <summary>首页“今日”统计的原始数据：今天开始的工单（未删除）。</summary>
+    public List<OrderDayInfo> OrdersStartedOn(DateTime day, int? operatorId = null)
+    {
+        var from = day.Date;
+        var to = from.AddDays(1);
+        using var db = _factory.CreateDbContext();
+        var query = db.WorkOrders.Where(w => w.DeletedAt == null && w.StartTime >= from && w.StartTime < to);
+        if (operatorId is int op) query = query.Where(w => w.OperatorId == op);
+        return query
+            .Select(w => new OrderDayInfo(w.StartTime, w.Status,
+                db.WeightRecords.Any(r => r.WorkOrderId == w.Id && !r.IsValid)))
+            .ToList();
+    }
+
     public void CompleteWorkOrder(int workOrderId)
     {
         using var db = _factory.CreateDbContext();
@@ -230,5 +261,8 @@ public sealed class OrderService
 }
 
 public sealed record ActiveOrderRef(int Id, string? ProductionNo, string Operator);
+
+public sealed record ActiveOrderInfo(int Id, int FormulaId, string FormulaCode, string FormulaName,
+    int? OperatorId, string Operator, string? ProductionNo, DateTime StartTime, int DoneSteps, int TotalSteps);
 
 public sealed record OrderSummary(DateTime StartTime, DateTime? EndTime, int StepCount, int ReworkCount);

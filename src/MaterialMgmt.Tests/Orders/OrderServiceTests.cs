@@ -184,6 +184,35 @@ public class OrderServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public void ActiveOrders_ReportProgress_AndExcludeFinished()
+    {
+        _orders.SavePendingWeight(_orderId, _itemId, "MAT-T00001", 1.5, DateTime.Now);
+        _orders.InvalidateValidRecords(_orderId, _itemId, "tester");
+        _orders.SavePendingWeight(_orderId, _itemId, "MAT-T00001", 1.4, DateTime.Now);
+
+        var a = Assert.Single(_orders.ActiveOrders());
+        Assert.Equal(_orderId, a.Id);
+        Assert.Equal("FML-T00001", a.FormulaCode);
+        Assert.Equal(1, a.DoneSteps);
+        Assert.Equal(1, a.TotalSteps);
+        Assert.Empty(_orders.ActiveOrders(operatorId: 999));
+
+        _orders.CompleteWorkOrder(_orderId);
+        Assert.Empty(_orders.ActiveOrders());
+    }
+
+    [Fact]
+    public void OrdersStartedOn_FlagsRework()
+    {
+        _orders.SavePendingWeight(_orderId, _itemId, "MAT-T00001", 1.5, DateTime.Now);
+        Assert.False(Assert.Single(_orders.OrdersStartedOn(DateTime.Today)).HasRework);
+
+        _orders.InvalidateValidRecords(_orderId, _itemId, "tester");
+        Assert.True(Assert.Single(_orders.OrdersStartedOn(DateTime.Today)).HasRework);
+        Assert.Empty(_orders.OrdersStartedOn(DateTime.Today.AddDays(-1)));
+    }
+
+    [Fact]
     public async Task DeleteMany_IsAtomic_WhenOneOrderIsInProgress()
     {
         int doneId;

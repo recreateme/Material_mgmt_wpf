@@ -16,9 +16,16 @@ public enum SoundCue
     ReadingLost
 }
 
+public enum SoundVolume
+{
+    Low,
+    Medium,
+    High
+}
+
 /// <summary>
 /// 称量页提示音。音调在内存中合成为 WAV（无需随包携带音频文件），四种提示音调型不同，
-/// 不看屏幕也能分辨。受“设置 → 提示音”开关控制；播放失败（无声卡等）静默忽略。
+/// 不看屏幕也能分辨。受“设置 → 提示音”开关与音量档控制；播放失败（无声卡等）静默忽略。
 /// </summary>
 public sealed class SoundService
 {
@@ -28,13 +35,30 @@ public sealed class SoundService
     private readonly Dictionary<SoundCue, byte[]> _wavs = new();
     private SoundPlayer? _player;
     private MemoryStream? _stream;
+    private SoundVolume _volume;
 
     public SoundService(IConfigService config)
     {
         _config = config;
+        _volume = Enum.TryParse<SoundVolume>(_config.GetValue("app", "sound_volume", nameof(SoundVolume.Medium)), true, out var v)
+            ? v
+            : SoundVolume.Medium;
     }
 
     public bool Enabled => _config.SoundEnabled;
+
+    /// <summary>车间嘈杂程度不同，提供低 / 中 / 高三档（[app] sound_volume）。</summary>
+    public SoundVolume Volume
+    {
+        get => _volume;
+        set
+        {
+            if (_volume == value) return;
+            _volume = value;
+            _wavs.Clear();
+            _config.SetValue("app", "sound_volume", value.ToString().ToLowerInvariant());
+        }
+    }
 
     public void Play(SoundCue cue)
     {
@@ -42,7 +66,7 @@ public sealed class SoundService
         try
         {
             if (!_wavs.TryGetValue(cue, out var wav))
-                _wavs[cue] = wav = Build(cue);
+                _wavs[cue] = wav = Build(cue, Amplitude(_volume));
 
             _player?.Stop();
             _stream?.Dispose();
@@ -61,7 +85,7 @@ public sealed class SoundService
     {
         try
         {
-            var wav = Build(cue);
+            var wav = Build(cue, Amplitude(_volume));
             _player?.Stop();
             _stream?.Dispose();
             _stream = new MemoryStream(wav);
@@ -74,18 +98,25 @@ public sealed class SoundService
         }
     }
 
-    private static byte[] Build(SoundCue cue) => cue switch
+    private static double Amplitude(SoundVolume v) => v switch
     {
-        SoundCue.StableOk => ToWav(Tone(880, 90), Gap(30), Tone(1318, 140)),
-        SoundCue.OutOfRange => ToWav(Tone(330, 150), Gap(60), Tone(330, 150), Gap(60), Tone(330, 150)),
-        SoundCue.WrongScan => ToWav(Tone(196, 320, square: true)),
-        SoundCue.ReadingLost => ToWav(Tone(660, 130), Gap(40), Tone(520, 130), Gap(40), Tone(400, 220)),
-        _ => ToWav(Tone(880, 100))
+        SoundVolume.Low => 0.15,
+        SoundVolume.High => 0.45,
+        _ => 0.3
+    };
+
+    private static byte[] Build(SoundCue cue, double amp) => cue switch
+    {
+        SoundCue.StableOk => ToWav(Tone(880, 90, amp), Gap(30), Tone(1318, 140, amp)),
+        SoundCue.OutOfRange => ToWav(Tone(330, 150, amp), Gap(60), Tone(330, 150, amp), Gap(60), Tone(330, 150, amp)),
+        SoundCue.WrongScan => ToWav(Tone(196, 320, amp, square: true)),
+        SoundCue.ReadingLost => ToWav(Tone(660, 130, amp), Gap(40), Tone(520, 130, amp), Gap(40), Tone(400, 220, amp)),
+        _ => ToWav(Tone(880, 100, amp))
     };
 
     private static short[] Gap(int ms) => new short[SampleRate * ms / 1000];
 
-    private static short[] Tone(double freq, int ms, bool square = false)
+    private static short[] Tone(double freq, int ms, double amp, bool square = false)
     {
         var n = SampleRate * ms / 1000;
         var data = new short[n];
@@ -97,7 +128,7 @@ public sealed class SoundService
             var env = 1.0;
             if (i < fade) env = (double)i / fade;
             else if (i > n - fade) env = (double)(n - i) / fade;
-            data[i] = (short)(s * env * short.MaxValue * 0.45);
+            data[i] = (short)(s * env * short.MaxValue * amp);
         }
         return data;
     }
