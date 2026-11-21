@@ -8,6 +8,7 @@ using MaterialMgmt.Core.Entities;
 using MaterialMgmt.Core.Formulas;
 using MaterialMgmt.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
@@ -179,8 +180,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         }
         else if (_items.Count == 0)
         {
-            if (MessageBox.Show("该配方尚无称量步骤，确定返回列表？", "确认",
-                    MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            if (!ConfirmDialog.Ask("该配方尚无称量步骤，确定返回列表？", "确认", "确定"))
                 return;
         }
         _nav.Navigate(AppPage.Formulas);
@@ -369,7 +369,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         var tip = selected.Count == 1
             ? "确认删除该步骤？"
             : $"确认删除选中的 {selected.Count} 个步骤？";
-        if (MessageBox.Show(tip, "确认", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        if (!ConfirmDialog.Ask(tip, "确认删除", "删除", danger: true))
             return;
 
         using var db = _dbFactory.CreateDbContext();

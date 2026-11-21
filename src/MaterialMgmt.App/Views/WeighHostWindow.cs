@@ -27,10 +27,7 @@ public sealed class WeighHostWindow : Window
         _nav = nav;
         _devices = devices;
         Title = $"称量工作台 — {user.DisplayName}";
-        Width = 1100;
-        Height = 720;
-        MinWidth = 880;
-        MinHeight = 560;
+        WindowSizing.Fit(this, 1100, 720, 880, 560);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         BuildUi();
         _nav.AttachHost(_host);
@@ -48,7 +45,7 @@ public sealed class WeighHostWindow : Window
 
         var status = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(0xF1, 0xF5, 0xF9)),
+            Background = UiTheme.Brush(UiTheme.PanelAlt),
             BorderBrush = UiTheme.Brush(UiTheme.Border),
             BorderThickness = new Thickness(0, 1, 0, 0),
             Padding = new Thickness(14, 7, 14, 7)
@@ -60,7 +57,7 @@ public sealed class WeighHostWindow : Window
         statusRow.Children.Add(new TextBlock
         {
             Text = "  ·  称量进行中时扫码仅进入本窗",
-            FontSize = 11,
+            FontSize = UiTheme.FontCaption,
             Foreground = UiTheme.Brush(UiTheme.Muted),
             VerticalAlignment = VerticalAlignment.Center
         });
@@ -74,7 +71,7 @@ public sealed class WeighHostWindow : Window
         header.Children.Add(new TextBlock
         {
             Text = "称量工作台",
-            Foreground = new SolidColorBrush(Color.FromRgb(0xF1, 0xF5, 0xF9)),
+            Foreground = UiTheme.Brush(UiTheme.NavTitle),
             FontWeight = FontWeights.Bold,
             FontSize = 15
         });
@@ -82,7 +79,7 @@ public sealed class WeighHostWindow : Window
         {
             Text = "与主窗共享设备",
             Foreground = UiTheme.Brush(UiTheme.NavText),
-            FontSize = 11,
+            FontSize = UiTheme.FontCaption,
             Margin = new Thickness(0, 4, 0, 0)
         });
         DockPanel.SetDock(header, Dock.Top);

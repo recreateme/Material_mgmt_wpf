@@ -8,6 +8,7 @@ using MaterialMgmt.Core.Auth;
 using MaterialMgmt.Core.Entities;
 using MaterialMgmt.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
@@ -66,60 +67,15 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
         var me = _auth.CurrentUser!;
         if (!me.IsSystemAdmin())
         {
-            MessageBox.Show("仅系统管理员可维护业务人员账号");
+            UiFeedback.Warn("仅系统管理员可维护业务人员账号");
             return;
         }
 
-        var userBox = new TextBox { Height = 30, Text = row?.Username ?? "", IsEnabled = row is null, Margin = new Thickness(0, 4, 0, 8) };
-        var display = new TextBox { Height = 30, Text = row?.DisplayName ?? "", Margin = new Thickness(0, 4, 0, 8) };
-        var pw = new PasswordBox { Height = 30, Margin = new Thickness(0, 4, 0, 8), Visibility = row is null ? Visibility.Visible : Visibility.Collapsed };
-
-        var dlg = new Window { Title = row is null ? "新增业务人员" : "编辑业务人员", Width = 400, SizeToContent = SizeToContent.Height, MinHeight = 260, Owner = Window.GetWindow(this), WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        var stack = new StackPanel { Margin = new Thickness(20) };
-        stack.Children.Add(new TextBlock { Text = "用户名" }); stack.Children.Add(userBox);
-        stack.Children.Add(new TextBlock { Text = "显示名" }); stack.Children.Add(display);
-        stack.Children.Add(UiTheme.Hint("角色固定为业务人员（可管理原料/配方/称量）"));
-        if (row is null) { stack.Children.Add(new TextBlock { Text = "初始密码" }); stack.Children.Add(pw); }
-        var ok = UiTheme.PrimaryButton("保存");
-        ok.Click += (_, _) =>
-        {
-            try
-            {
-                using var db = _dbFactory.CreateDbContext();
-                if (row is null)
-                {
-                    if (string.IsNullOrWhiteSpace(userBox.Text) || string.IsNullOrWhiteSpace(pw.Password))
-                    { MessageBox.Show(dlg, "请填写用户名和密码"); return; }
-                    if (pw.Password.Length < 6)
-                    { MessageBox.Show(dlg, "密码至少 6 位"); return; }
-                    var name = userBox.Text.Trim();
-                    db.Users.Add(new User
-                    {
-                        Username = name,
-                        DisplayName = string.IsNullOrWhiteSpace(display.Text) ? name : display.Text.Trim(),
-                        Role = Roles.Business,
-                        PasswordHash = _auth.HashPassword(pw.Password),
-                        IsActive = true,
-                        CreatedAt = DateTime.Now
-                    });
-                    _audit.Log("user", $"创建业务人员 {name}", me.Username);
-                }
-                else
-                {
-                    var u = db.Users.First(x => x.Id == row.Id);
-                    if (u.Role != Roles.Business)
-                    { MessageBox.Show(dlg, "只能编辑业务人员账号"); return; }
-                    u.DisplayName = display.Text.Trim();
-                    u.UpdatedAt = DateTime.Now;
-                    _audit.Log("user", $"编辑业务人员 {u.Username}", me.Username);
-                }
-                db.SaveChanges();
-                dlg.DialogResult = true; dlg.Close(); Refresh();
-                UiFeedback.Success(row is null ? "业务人员已创建。" : "已保存。");
-            }
-            catch (Exception ex) { MessageBox.Show(dlg, ex.Message); }
-        };
-        stack.Children.Add(ok); dlg.Content = stack; dlg.ShowDialog();
+        var dlg = new UserEditDialog(_dbFactory, _auth, _audit, me, row?.Id, row?.Username, row?.DisplayName)
+        { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() != true) return;
+        Refresh();
+        UiFeedback.Success(row is null ? "业务人员已创建。" : "已保存。");
     }
 
     private UserRow? CurrentRow() => GridKit.Current<UserRow>(_grid)?.Item
@@ -128,24 +84,10 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
     private void ResetPw()
     {
         if (CurrentRow() is not { } row) return;
-        var pw = new PasswordBox { Height = 30, Margin = new Thickness(0, 4, 0, 8) };
-        var dlg = new Window { Title = "重置密码", Width = 340, SizeToContent = SizeToContent.Height, MinHeight = 160, Owner = Window.GetWindow(this), WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        var stack = new StackPanel { Margin = new Thickness(20) };
-        stack.Children.Add(new TextBlock { Text = "新密码" }); stack.Children.Add(pw);
-        var ok = UiTheme.PrimaryButton("确定");
-        ok.Click += (_, _) =>
-        {
-            if (pw.Password.Length < 6) { MessageBox.Show(dlg, "密码至少 6 位"); return; }
-            using var db = _dbFactory.CreateDbContext();
-            var u = db.Users.First(x => x.Id == row.Id);
-            u.PasswordHash = _auth.HashPassword(pw.Password);
-            u.UpdatedAt = DateTime.Now;
-            db.SaveChanges();
-            _audit.Log("user", $"重置密码 {u.Username}", _auth.CurrentUser?.Username ?? "");
-            dlg.DialogResult = true; dlg.Close();
+        var dlg = new ResetPasswordDialog(_dbFactory, _auth, _audit, row.Id, row.Username)
+        { Owner = Window.GetWindow(this) };
+        if (dlg.ShowDialog() == true)
             UiFeedback.Success($"已重置 {row.Username} 的密码。");
-        };
-        stack.Children.Add(ok); dlg.Content = stack; dlg.ShowDialog();
     }
 
     private void Toggle()
@@ -185,8 +127,7 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
 
             if (linked.Count == 0)
             {
-                if (MessageBox.Show($"确认删除 {free.Count} 个用户？此操作不可恢复。", "确认",
-                        MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                if (!ConfirmDialog.Ask($"确认删除 {free.Count} 个用户？此操作不可恢复。", "确认删除", "删除", danger: true))
                     return;
                 RemoveUsers(db, free, actor.Username);
                 db.SaveChanges();
@@ -209,8 +150,7 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
                     _audit.Log("user", $"禁用用户 {u.Username}（删除时因存在工单）", actor.Username);
                 }
                 if (free.Count > 0 &&
-                    MessageBox.Show($"有工单账号已禁用。是否同时删除其余 {free.Count} 个无工单账号？", "确认",
-                        MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                    ConfirmDialog.Ask($"有工单账号已禁用。是否同时删除其余 {free.Count} 个无工单账号？", "确认", "同时删除", "保留", danger: true))
                 {
                     RemoveUsers(db, free, actor.Username);
                 }

@@ -11,6 +11,7 @@ using MaterialMgmt.Core.Workflow;
 using MaterialMgmt.Infrastructure.Data;
 using MaterialMgmt.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
@@ -182,7 +183,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
         var sideHint = new TextBlock
         {
             Text = "绿色=已完成（可点回称）\n灰色=待称量",
-            FontSize = 11,
+            FontSize = UiTheme.FontCaption,
             Foreground = UiTheme.Brush(UiTheme.Muted),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 8, 0, 0)
@@ -411,8 +412,8 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
             var current = !_engine.IsComplete && i == _engine.StepIndex;
 
             var bg = done
-                ? new SolidColorBrush(Color.FromRgb(0xEC, 0xFC, 0xF5))
-                : new SolidColorBrush(Color.FromRgb(0xF1, 0xF5, 0xF9));
+                ? UiTheme.Brush(UiTheme.SuccessSoft)
+                : UiTheme.Brush(UiTheme.PanelAlt);
             var borderColor = current ? UiTheme.Primary : (done ? UiTheme.Success : UiTheme.Border);
             var mark = done ? "✓" : (current ? "●" : "○");
             var markColor = done ? UiTheme.Success : (current ? UiTheme.Primary : UiTheme.Muted);
@@ -456,7 +457,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
                     new TextBlock
                     {
                         Text = item.Material.Code,
-                        FontSize = 11,
+                        FontSize = UiTheme.FontCaption,
                         Foreground = UiTheme.Brush(UiTheme.Muted),
                         Margin = new Thickness(24, 2, 0, 0)
                     }
@@ -480,7 +481,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
         var tip =
             $"重新称量第 {index + 1} 步「{item.Material.Name}」？\n" +
             "将作废该步原有效记录；其后已完成步骤保留。";
-        if (MessageBox.Show(tip, "重新称量", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        if (!ConfirmDialog.Ask(tip, "重新称量", "重新称量", danger: true))
             return;
 
         var n = _orders.InvalidateValidRecords(_workOrderId, item.Id, _auth.CurrentUser?.Username);
@@ -612,7 +613,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
 
     private void Cancel()
     {
-        if (MessageBox.Show("确认取消当前工单？", "确认", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        if (!ConfirmDialog.Ask("确认取消当前工单？", "确认取消", "取消工单", "返回", danger: true))
             return;
         try
         {

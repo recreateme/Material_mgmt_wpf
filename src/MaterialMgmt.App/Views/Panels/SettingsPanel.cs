@@ -80,7 +80,7 @@ public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
         root.Children.Add(new TextBlock
         {
             Text = "推荐：扫码枪设为 USB COM，与电子秤使用不同 COM。标签内容须与原料编码一致（如 MAT-000001）。",
-            Foreground = new SolidColorBrush(Color.FromRgb(0x64, 0x74, 0x8B)),
+            Foreground = UiTheme.Brush(UiTheme.Muted),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 8)
         });

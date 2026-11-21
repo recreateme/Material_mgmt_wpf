@@ -7,28 +7,50 @@ namespace MaterialMgmt.App.Themes;
 /// <summary>代码侧主题令牌与按钮工厂（样式定义在 AppTheme.xaml）。</summary>
 public static class UiTheme
 {
-    public static readonly Color Primary = Color.FromRgb(0x25, 0x63, 0xEB);
-    public static readonly Color NavBg = Color.FromRgb(0x1E, 0x29, 0x3B);
-    public static readonly Color NavText = Color.FromRgb(0x94, 0xA3, 0xB8);
-    public static readonly Color PageBg = Color.FromRgb(0xF8, 0xFA, 0xFC);
-    public static readonly Color Border = Color.FromRgb(0xE2, 0xE8, 0xF0);
-    public static readonly Color Text = Color.FromRgb(0x1E, 0x29, 0x3B);
-    public static readonly Color Muted = Color.FromRgb(0x64, 0x74, 0x8B);
-    public static readonly Color Success = Color.FromRgb(0x16, 0xA3, 0x4A);
-    public static readonly Color Warning = Color.FromRgb(0xD9, 0x77, 0x06);
-    public static readonly Color Danger = Color.FromRgb(0xDC, 0x26, 0x26);
-    public static readonly Color BannerStart = Color.FromRgb(0x1E, 0x3A, 0x5F);
-    public static readonly Color BannerEnd = Color.FromRgb(0x25, 0x63, 0xEB);
-    public static readonly Color WeightOk = Color.FromRgb(0x16, 0xA3, 0x4A);
-    public static readonly Color WeightUnstable = Color.FromRgb(0x94, 0xA3, 0xB8);
-    public static readonly Color WeightBad = Color.FromRgb(0xDC, 0x26, 0x26);
+    // 颜色与字号的唯一定义在 Themes/AppTheme.xaml；这里只是读取资源，缺失时返回醒目的洋红色便于发现。
+    public static readonly Color Primary = Res("C.Primary");
+    public static readonly Color PrimarySoft = Res("C.PrimarySoft");
+    public static readonly Color NavBg = Res("C.NavBg");
+    public static readonly Color NavText = Res("C.NavText");
+    public static readonly Color NavTitle = Res("C.NavTitle");
+    public static readonly Color NavUser = Res("C.NavUser");
+    public static readonly Color PageBg = Res("C.PageBg");
+    public static readonly Color PanelAlt = Res("C.PanelAlt");
+    public static readonly Color Border = Res("C.Border");
+    public static readonly Color Text = Res("C.Text");
+    public static readonly Color Muted = Res("C.Muted");
+    public static readonly Color Success = Res("C.Success");
+    public static readonly Color SuccessSoft = Res("C.SuccessSoft");
+    public static readonly Color Warning = Res("C.Warning");
+    public static readonly Color Danger = Res("C.Danger");
+    public static readonly Color DangerSoft = Res("C.DangerSoft");
+    public static readonly Color BannerStart = Res("C.BannerStart");
+    public static readonly Color BannerEnd = Res("C.BannerEnd");
+    public static readonly Color WeightOk = Res("C.Success");
+    public static readonly Color WeightUnstable = Res("C.WeightUnstable");
+    public static readonly Color WeightBad = Res("C.Danger");
+
+    /// <summary>4 档字号：标题 / 小标题 / 正文 / 说明（最小 12）。</summary>
+    public static readonly double FontTitle = ResDouble("FontSizeTitle", 20);
+    public static readonly double FontSubtitle = ResDouble("FontSizeSubtitle", 15);
+    public static readonly double FontBody = ResDouble("FontSizeBody", 14);
+    public static readonly double FontCaption = ResDouble("FontSizeCaption", 12);
+
+    private static Color Res(string key)
+        => Application.Current?.TryFindResource(key) is Color c ? c : Colors.Magenta;
+
+    private static double ResDouble(string key, double fallback)
+        => Application.Current?.TryFindResource(key) is double d ? d : fallback;
+
+    /// <summary>给颜色加透明度（用于遮罩、半透明文字），避免在面板里手写 ARGB。</summary>
+    public static Color WithAlpha(Color c, byte alpha) => Color.FromArgb(alpha, c.R, c.G, c.B);
 
     public static SolidColorBrush Brush(Color c) => new(c);
 
     public static TextBlock PageTitle(string text) => new()
     {
         Text = text,
-        FontSize = 22,
+        FontSize = FontTitle,
         FontWeight = FontWeights.Bold,
         Foreground = Brush(Text),
         Margin = new Thickness(0, 0, 16, 0),
@@ -102,7 +124,7 @@ public static class UiTheme
     public static TextBlock SectionTitle(string text) => new()
     {
         Text = text,
-        FontSize = 13,
+        FontSize = FontSubtitle,
         FontWeight = FontWeights.SemiBold,
         Foreground = Brush(Text),
         Margin = new Thickness(0, 12, 0, 6)
@@ -115,7 +137,7 @@ public static class UiTheme
         FontWeight = FontWeights.SemiBold,
         Foreground = Brush(color),
         Padding = new Thickness(8, 3, 8, 3),
-        Background = new SolidColorBrush(Color.FromArgb(0x22, color.R, color.G, color.B)),
+        Background = new SolidColorBrush(WithAlpha(color, 0x22)),
         HorizontalAlignment = HorizontalAlignment.Center
     };
 

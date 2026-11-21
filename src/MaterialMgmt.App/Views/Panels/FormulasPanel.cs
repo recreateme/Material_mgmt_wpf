@@ -10,6 +10,7 @@ using MaterialMgmt.Core.Formulas;
 using MaterialMgmt.Infrastructure.Data;
 using MaterialMgmt.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
@@ -296,8 +297,7 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
             return;
         }
 
-        if (MessageBox.Show($"确认删除 {list.Count} 个配方及其步骤？此操作不可恢复。", "确认",
-                MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        if (!ConfirmDialog.Ask($"确认删除 {list.Count} 个配方及其步骤？此操作不可恢复。", "确认删除", "删除", danger: true))
             return;
 
         foreach (var f in list)

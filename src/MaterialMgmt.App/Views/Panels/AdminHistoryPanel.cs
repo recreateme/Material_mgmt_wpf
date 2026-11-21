@@ -10,6 +10,7 @@ using MaterialMgmt.Infrastructure.Export;
 using MaterialMgmt.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Win32;
+using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
@@ -106,7 +107,7 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
         var tip = skipped > 0
             ? $"将取消 {targets.Count} 条进行中工单（已跳过 {skipped} 条非进行中）？"
             : $"确认取消 {targets.Count} 条进行中工单？";
-        if (MessageBox.Show(tip, "确认", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        if (!ConfirmDialog.Ask(tip, "确认取消", "取消工单", "返回", danger: true))
             return;
         try
         {
@@ -137,7 +138,7 @@ public sealed class OperatorHistoryPanel : UserControl, IPageLifecycle
         var tip = skipped > 0
             ? $"将删除 {targets.Count} 条已完成/已取消工单（已跳过 {skipped} 条进行中）？"
             : $"确认删除 {targets.Count} 条工单？此操作不可恢复。";
-        if (MessageBox.Show(tip, "确认", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        if (!ConfirmDialog.Ask(tip, "确认删除", "删除", danger: true))
             return;
         try
         {
@@ -351,7 +352,7 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
         var tip = skipped > 0
             ? $"将删除 {targets.Count} 条已完成/已取消工单（已跳过 {skipped} 条进行中）？"
             : $"确认删除 {targets.Count} 条工单？此操作不可恢复。";
-        if (MessageBox.Show(tip, "确认", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        if (!ConfirmDialog.Ask(tip, "确认删除", "删除", danger: true)) return;
         try
         {
             var ids = targets.Select(r => r.Id).ToList();

@@ -62,14 +62,14 @@ public sealed class HomePanel : UserControl, IPageLifecycle
                 {
                     Text = $"欢迎回来，今天是 {DateTime.Now:yyyy年M月d日 dddd}",
                     FontSize = 14,
-                    Foreground = new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)),
+                    Foreground = UiTheme.Brush(UiTheme.WithAlpha(Colors.White, 0xE6)),
                     Margin = new Thickness(0, 6, 0, 0)
                 },
                 new TextBlock
                 {
                     Text = $"{RoleLabels.ToDisplay(user.Role)}  ·  原料管理系统 WPF {AppInfo.DisplayVersion}",
                     FontSize = 12,
-                    Foreground = new SolidColorBrush(Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF)),
+                    Foreground = UiTheme.Brush(UiTheme.WithAlpha(Colors.White, 0xB3)),
                     Margin = new Thickness(0, 4, 0, 0)
                 }
             }
@@ -109,7 +109,7 @@ public sealed class HomePanel : UserControl, IPageLifecycle
             {
                 b.BorderBrush = UiTheme.Brush(UiTheme.Primary);
                 b.BorderThickness = new Thickness(2);
-                b.Background = new SolidColorBrush(Color.FromRgb(0xEF, 0xF6, 0xFF));
+                b.Background = UiTheme.Brush(UiTheme.PrimarySoft);
             };
             b.MouseLeave += (_, _) =>
             {

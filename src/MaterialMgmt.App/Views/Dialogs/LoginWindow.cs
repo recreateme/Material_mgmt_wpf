@@ -24,8 +24,7 @@ public partial class LoginWindow : Window
         _auth = auth;
         _audit = audit;
         Title = "原料管理系统 — 登录";
-        Width = 960;
-        Height = 580;
+        WindowSizing.Fit(this, 960, 580, 760, 440);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ResizeMode = ResizeMode.NoResize;
         Background = Brushes.Transparent;
@@ -85,7 +84,7 @@ public partial class LoginWindow : Window
         var card = new Border
         {
             Width = 360,
-            Margin = new Thickness(0, 36, 72, 36),
+            Margin = new Thickness(0, 16, 72, 16),
             Padding = new Thickness(28, 28, 28, 28),
             Background = new SolidColorBrush(Color.FromArgb(0xF2, 0xF8, 0xFA, 0xFC)),
             BorderBrush = new SolidColorBrush(Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF)),

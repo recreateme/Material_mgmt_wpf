@@ -51,8 +51,6 @@ public partial class MainWindow : Window
         _sp = sp;
 
         Title = AppInfo.WindowTitle;
-        MinWidth = 960;
-        MinHeight = 600;
         ApplyGeometry();
         BuildUi();
         RegisterPages();
@@ -123,8 +121,8 @@ public partial class MainWindow : Window
     private void ApplyGeometry()
     {
         var (w, h) = _config.WindowSize;
-        Width = Math.Max(960, w);
-        Height = Math.Max(600, h);
+        // 设计尺寸（保存的窗口大小）不超过工作区 90%，小屏 / 高缩放下不会被截断
+        WindowSizing.Fit(this, Math.Max(960, w), Math.Max(600, h), 960, 600);
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         if (_config.WindowMaximized) WindowState = WindowState.Maximized;
     }
@@ -135,14 +133,14 @@ public partial class MainWindow : Window
 
         var status = new Border
         {
-            Background = new SolidColorBrush(Color.FromRgb(0xF1, 0xF5, 0xF9)),
+            Background = UiTheme.Brush(UiTheme.PanelAlt),
             BorderBrush = UiTheme.Brush(UiTheme.Border),
             BorderThickness = new Thickness(0, 1, 0, 0),
             Padding = new Thickness(14, 7, 14, 7)
         };
         DockPanel.SetDock(status, Dock.Bottom);
-        _scaleDot.FontSize = 12;
-        _scanDot.FontSize = 12;
+        _scaleDot.FontSize = UiTheme.FontCaption;
+        _scanDot.FontSize = UiTheme.FontCaption;
         var statusRow = new StackPanel { Orientation = Orientation.Horizontal };
         statusRow.Children.Add(_scaleDot);
         statusRow.Children.Add(_scanDot);
@@ -160,7 +158,7 @@ public partial class MainWindow : Window
         header.Children.Add(new TextBlock
         {
             Text = "原料管理系统",
-            Foreground = new SolidColorBrush(Color.FromRgb(0xF1, 0xF5, 0xF9)),
+            Foreground = UiTheme.Brush(UiTheme.NavTitle),
             FontWeight = FontWeights.Bold,
             FontSize = 15,
             TextWrapping = TextWrapping.Wrap
@@ -169,14 +167,14 @@ public partial class MainWindow : Window
         {
             Text = AppInfo.DisplayVersion,
             Foreground = UiTheme.Brush(UiTheme.NavText),
-            FontSize = 11,
+            FontSize = UiTheme.FontCaption,
             Margin = new Thickness(0, 2, 0, 0)
         });
-        _userName.Foreground = new SolidColorBrush(Color.FromRgb(0xCB, 0xD5, 0xE1));
+        _userName.Foreground = UiTheme.Brush(UiTheme.NavUser);
         _userName.Margin = new Thickness(0, 14, 0, 0);
         _userName.FontSize = 13;
         _userRole.Foreground = UiTheme.Brush(UiTheme.NavText);
-        _userRole.FontSize = 11;
+        _userRole.FontSize = UiTheme.FontCaption;
         _userRole.Margin = new Thickness(0, 2, 0, 8);
         header.Children.Add(_userName);
         header.Children.Add(_userRole);

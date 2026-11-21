@@ -8,6 +8,7 @@ using MaterialMgmt.Core.Codes;
 using MaterialMgmt.Core.Entities;
 using MaterialMgmt.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
@@ -136,7 +137,7 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
             MessageBox.Show("请先勾选要删除的材料", "提示");
             return;
         }
-        if (MessageBox.Show($"确认删除 {selected.Count} 条原材料？", "确认", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        if (!ConfirmDialog.Ask($"确认删除 {selected.Count} 条原材料？", "确认删除", "删除", danger: true))
             return;
 
         using var db = _dbFactory.CreateDbContext();
