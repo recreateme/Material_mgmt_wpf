@@ -11,7 +11,7 @@ namespace MaterialMgmt.App.Services;
 public sealed class DeviceHub : IDisposable
 {
     private ScaleWorker? _scale;
-    private DateTime _lastScanAt = DateTime.MinValue;
+    private readonly BarcodeRouter _router = new();
     private DateTime _retryAfter = DateTime.MinValue;
     private string _preferredPort = "";
     private bool _autoReconnect = true;
@@ -20,12 +20,22 @@ public sealed class DeviceHub : IDisposable
     private bool _hidWired;
     private bool _serialWired;
     private ScannerInputMode _activeMode = ScannerInputMode.Auto;
-    private bool _useSerialPath;
     private bool _rawFrameLog;
+
+    private bool UseSerialPath
+    {
+        get => _router.SerialPathActive;
+        set => _router.SerialPathActive = value;
+    }
 
     public event Action? ScaleStatusChanged;
     public event Action? ScannerStatusChanged;
-    public event Action<string, bool>? BarcodeRouted;
+
+    public event Action<string, bool>? BarcodeRouted
+    {
+        add => _router.Broadcast += value;
+        remove => _router.Broadcast -= value;
+    }
 
     /// <summary>
     /// 稳定的称重事件（weight, stable, overload）：不随 ScaleWorker 重建而失效，
@@ -37,15 +47,19 @@ public sealed class DeviceHub : IDisposable
     public Func<IBarcodeHandler?>? ResolveBarcodeHandler { get; set; }
 
     /// <summary>称量进行中时为 true：扫码只进称量窗，不广播给主窗弹窗。</summary>
-    public Func<bool>? IsBarcodeExclusive { get; set; }
+    public Func<bool>? IsBarcodeExclusive
+    {
+        get => _router.IsExclusive;
+        set => _router.IsExclusive = value;
+    }
 
     public BarcodeInputService Barcode { get; }
     public BarcodeSerialService SerialBarcode { get; }
 
     public bool IsScaleConnected => _scale?.IsOpen == true;
-    public string LastScanCode { get; private set; } = "";
+    public string LastScanCode => _router.LastCode;
     /// <summary>最近一次扫码的来源（<see cref="ScanSources"/>）；分发给页面前已更新，页面在 OnBarcode 内读取即为本次来源。</summary>
-    public string LastScanSource { get; private set; } = "";
+    public string LastScanSource => _router.LastSource;
     public bool IsScannerListening { get; private set; }
     public string ScaleLastError { get; private set; } = "";
     public string ScannerLastError { get; private set; } = "";
@@ -57,12 +71,24 @@ public sealed class DeviceHub : IDisposable
     public bool IsDiscovering => Interlocked.CompareExchange(ref _discovering, 0, 0) == 1;
 
     /// <summary>是否应将键盘预览键喂给 HID 扫码聚合。</summary>
-    public bool ShouldAcceptHidKeys => !_useSerialPath && _hidWired;
+    public bool ShouldAcceptHidKeys => !UseSerialPath && _hidWired;
 
     public DeviceHub(BarcodeInputService barcode, BarcodeSerialService serialBarcode)
     {
         Barcode = barcode;
         SerialBarcode = serialBarcode;
+        _router.ResolveHandler = () => ResolveBarcodeHandler?.Invoke() is { } h ? h.OnBarcode : null;
+        _router.Marshal = dispatch =>
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher is null || dispatcher.CheckAccess()) dispatch();
+            else dispatcher.Invoke(dispatch);
+        };
+        _router.Accepted += () =>
+        {
+            IsScannerListening = true;
+            ScannerStatusChanged?.Invoke();
+        };
         WireHid();
         WireSerial();
     }
@@ -74,7 +100,7 @@ public sealed class DeviceHub : IDisposable
         Barcode.BarcodeScanned += OnHidBarcode;
         Barcode.ActivityDetected += () =>
         {
-            if (_useSerialPath) return;
+            if (UseSerialPath) return;
             IsScannerListening = true;
             ScannerStatusChanged?.Invoke();
         };
@@ -104,44 +130,11 @@ public sealed class DeviceHub : IDisposable
         };
     }
 
-    private void OnHidBarcode(string code)
-    {
-        if (_useSerialPath) return;
-        PublishBarcode(code, ScanSources.Hid);
-    }
+    private void OnHidBarcode(string code) => _router.Publish(code, ScanSources.Hid);
 
-    private void OnSerialBarcode(string code) => PublishBarcode(code, ScanSources.Serial);
+    private void OnSerialBarcode(string code) => _router.Publish(code, ScanSources.Serial);
 
-    private void PublishBarcode(string code, string source)
-    {
-        var normalized = NormalizeCode(code);
-        if (normalized.Length < 4) return;
-        var simulated = source == ScanSources.Simulated;
-        LastScanCode = normalized;
-        LastScanSource = source;
-        _lastScanAt = DateTime.Now;
-        IsScannerListening = true;
-        ScannerStatusChanged?.Invoke();
-        var dispatcher = Application.Current?.Dispatcher;
-        if (dispatcher is null)
-            DispatchBarcode(normalized, simulated);
-        else if (dispatcher.CheckAccess())
-            DispatchBarcode(normalized, simulated);
-        else
-            dispatcher.Invoke(() => DispatchBarcode(normalized, simulated));
-    }
-
-    private void DispatchBarcode(string normalized, bool simulated)
-    {
-        var exclusive = IsBarcodeExclusive?.Invoke() == true;
-        var handler = ResolveBarcodeHandler?.Invoke();
-        handler?.OnBarcode(normalized, simulated);
-        // 独占称量时不广播，避免主窗筛选/弹窗抢码
-        if (!exclusive)
-            BarcodeRouted?.Invoke(normalized, simulated);
-    }
-
-    public static string NormalizeCode(string code) => (code ?? "").Trim();
+    public static string NormalizeCode(string code) => BarcodeRouter.Normalize(code);
 
     public ScaleWorker? GetScaleWorker() => _scale;
 
@@ -182,7 +175,7 @@ public sealed class DeviceHub : IDisposable
         if (!config.ScannerEnabled)
         {
             SerialBarcode.Close();
-            _useSerialPath = false;
+            UseSerialPath = false;
             ScannerSourceLabel = "已关闭";
             ScannerLastError = "";
             ScannerStatusChanged?.Invoke();
@@ -195,7 +188,7 @@ public sealed class DeviceHub : IDisposable
         if (!wantSerial)
         {
             SerialBarcode.Close();
-            _useSerialPath = false;
+            UseSerialPath = false;
             ScannerSourceLabel = "HID 键盘";
             ScannerLastError = "";
             IsScannerListening = true;
@@ -210,7 +203,7 @@ public sealed class DeviceHub : IDisposable
             string.Equals(scannerPort, scalePort, StringComparison.OrdinalIgnoreCase))
         {
             SerialBarcode.Close();
-            _useSerialPath = false;
+            UseSerialPath = false;
             ScannerLastError = $"扫码口不能与电子秤相同（{scannerPort}）";
             ScannerSourceLabel = "配置冲突";
             ScannerStatusChanged?.Invoke();
@@ -222,13 +215,13 @@ public sealed class DeviceHub : IDisposable
             SerialBarcode.Close();
             if (_activeMode == ScannerInputMode.Serial)
             {
-                _useSerialPath = true;
+                UseSerialPath = true;
                 ScannerLastError = "未配置扫码串口";
                 ScannerSourceLabel = "串口未配置";
             }
             else
             {
-                _useSerialPath = false;
+                UseSerialPath = false;
                 ScannerSourceLabel = "HID 键盘";
                 ScannerLastError = "";
                 IsScannerListening = true;
@@ -237,7 +230,7 @@ public sealed class DeviceHub : IDisposable
             return;
         }
 
-        _useSerialPath = true;
+        UseSerialPath = true;
         if (SerialBarcode.IsOpen &&
             string.Equals(SerialBarcode.PortName, scannerPort, StringComparison.OrdinalIgnoreCase) &&
             SerialBarcode.BaudRate == config.ScannerBaud)
@@ -253,7 +246,7 @@ public sealed class DeviceHub : IDisposable
             if (_activeMode == ScannerInputMode.Auto)
             {
                 // 串口失败时回退 HID，保证称量可继续
-                _useSerialPath = false;
+                UseSerialPath = false;
                 ScannerSourceLabel = "HID 回退";
             }
             else
@@ -272,9 +265,9 @@ public sealed class DeviceHub : IDisposable
 
     private void UpdateScannerSourceLabel()
     {
-        if (_useSerialPath && SerialBarcode.IsOpen)
+        if (UseSerialPath && SerialBarcode.IsOpen)
             ScannerSourceLabel = $"串口 {SerialBarcode.PortName}";
-        else if (_useSerialPath)
+        else if (UseSerialPath)
             ScannerSourceLabel = string.IsNullOrEmpty(ScannerLastError) ? "串口" : "串口失败";
         else
             ScannerSourceLabel = "HID 键盘";
@@ -361,7 +354,7 @@ public sealed class DeviceHub : IDisposable
     /// <summary>由主窗口定时器调用：空闲扫码检测 + 天平自动重连/再识别。</summary>
     public void Tick(IConfigService config)
     {
-        if (IsScannerListening && DateTime.Now - _lastScanAt > TimeSpan.FromMinutes(10))
+        if (IsScannerListening && DateTime.Now - _router.LastAt > TimeSpan.FromMinutes(10))
         {
             IsScannerListening = false;
             ScannerStatusChanged?.Invoke();
@@ -408,7 +401,7 @@ public sealed class DeviceHub : IDisposable
 
     public void SimulateBarcode(string code)
     {
-        PublishBarcode(code, ScanSources.Simulated);
+        _router.Publish(code, ScanSources.Simulated);
     }
 
     /// <summary>硬件自检：返回 (秤口可开, 扫码通道说明)。</summary>
@@ -441,7 +434,7 @@ public sealed class DeviceHub : IDisposable
             scannerOk = true;
             scannerMsg = "扫码已关闭";
         }
-        else if (_useSerialPath)
+        else if (UseSerialPath)
         {
             scannerOk = SerialBarcode.IsOpen;
             scannerMsg = scannerOk

@@ -7,16 +7,13 @@ using MaterialMgmt.App.Views.Dialogs;
 using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Codes;
 using MaterialMgmt.Core.Entities;
-using MaterialMgmt.Core.Orders;
-using MaterialMgmt.Infrastructure.Data;
 using MaterialMgmt.Infrastructure.Services;
-using Microsoft.EntityFrameworkCore;
 
 namespace MaterialMgmt.App.Views.Panels;
 
 public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
-    private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
+    private readonly FormulaService _formulaService;
     private readonly IAuthService _auth;
     private readonly IAuditLog _audit;
     private readonly NavigationService _nav;
@@ -48,10 +45,10 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
     private readonly Button _start;
     private List<Formula> _list = new();
 
-    public SessionSelectPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth,
+    public SessionSelectPanel(FormulaService formulas, IAuthService auth,
         IAuditLog audit, NavigationService nav, IConfigService config, OrderService orders)
     {
-        _dbFactory = dbFactory; _auth = auth; _audit = audit; _nav = nav; _config = config; _orders = orders;
+        _formulaService = formulas; _auth = auth; _audit = audit; _nav = nav; _config = config; _orders = orders;
         _start = UiTheme.PrimaryButton("填写工艺参数并开始");
         Build();
     }
@@ -103,8 +100,7 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
 
     private void LoadFormulas()
     {
-        using var db = _dbFactory.CreateDbContext();
-        _list = db.Formulas.Where(f => f.IsActive).OrderBy(f => f.Code).ToList();
+        _list = _formulaService.All(activeOnly: true).OrderBy(f => f.Code).ToList();
         _formulas.ItemsSource = _list.Select(f => new FormulaOption(f)).ToList();
         if (_formulas.Items.Count > 0) _formulas.SelectedIndex = 0;
         else Preview();
@@ -162,9 +158,7 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
             return;
         }
 
-        using var db = _dbFactory.CreateDbContext();
-        var items = db.FormulaItems.Include(i => i.Material).Where(i => i.FormulaId == opt.Id)
-            .OrderBy(i => i.Sequence)
+        var items = (_formulaService.GetWithSteps(opt.Id)?.Items ?? [])
             .Select(i => new PreviewRow(i.Sequence, i.Material.Code, i.Material.Name, i.WeightMin, i.WeightMax))
             .ToList();
         if (items.Count == 0)
@@ -199,44 +193,21 @@ public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHa
             UiFeedback.Hint("请先选择配方");
             return;
         }
-        using (var db = _dbFactory.CreateDbContext())
+        if (!_orders.FormulaHasSteps(opt.Id))
         {
-            if (!db.FormulaItems.Any(i => i.FormulaId == opt.Id))
-            {
-                UiFeedback.Hint("该配方没有步骤，无法开始称量");
-                return;
-            }
+            UiFeedback.Hint("该配方没有步骤，无法开始称量");
+            return;
         }
 
         var dlg = new WorkOrderParamsDialog(_config);
         if (dlg.ShowDialog() != true || dlg.Params is null) return;
-        var p = dlg.Params;
         var user = _auth.CurrentUser!;
 
-        using var db2 = _dbFactory.CreateDbContext();
-        var wo = new WorkOrder
-        {
-            FormulaId = opt.Id,
-            OperatorId = user.Id,
-            Operator = user.DisplayName,
-            StartTime = DateTime.Now,
-            Status = OrderRules.InProgress,
-            Temperature = p.Temperature,
-            Humidity = p.Humidity,
-            ProductionNo = p.ProductionNo,
-            D50 = p.D50,
-            MixingException = p.MixingException,
-            MixingExceptionNote = p.MixingExceptionNote,
-            BaseFilm = p.BaseFilm,
-            BatchNo = p.BatchNo,
-            Thickness = p.Thickness,
-            CoatingException = p.CoatingException,
-            CoatingExceptionNote = p.CoatingExceptionNote
-        };
-        db2.WorkOrders.Add(wo);
-        db2.SaveChanges();
-        _audit.Log("order", $"创建工单 #{wo.Id} 配方={opt.Code}", user.Username);
-        _nav.Navigate(AppPage.WeighSession, v => ((WeighSessionPanel)v).Load(wo.Id, opt.Id));
+        int id;
+        try { id = _orders.Create(opt.Id, user.Id, user.DisplayName, dlg.Params); }
+        catch (InvalidOperationException ex) { UiFeedback.Warn(ex.Message); LoadFormulas(); return; }
+        _audit.Log("order", $"创建工单 #{id} 配方={opt.Code}", user.Username);
+        _nav.Navigate(AppPage.WeighSession, v => ((WeighSessionPanel)v).Load(id, opt.Id));
     }
 
     private sealed class FormulaOption

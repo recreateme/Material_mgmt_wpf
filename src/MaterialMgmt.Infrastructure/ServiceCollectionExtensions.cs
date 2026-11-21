@@ -29,6 +29,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<DbBootstrap>();
         services.AddSingleton<OrderService>();
         services.AddSingleton<FormulaService>();
+        services.AddSingleton<MaterialService>();
+        services.AddSingleton<UserService>();
         services.AddSingleton<ExportService>();
 
         return services;

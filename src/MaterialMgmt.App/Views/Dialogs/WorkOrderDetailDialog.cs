@@ -5,15 +5,14 @@ using MaterialMgmt.App.Themes;
 using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Entities;
 using MaterialMgmt.Core.Hardware;
-using MaterialMgmt.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using MaterialMgmt.Infrastructure.Services;
 
 namespace MaterialMgmt.App.Views.Dialogs;
 
 /// <summary>工单详情：基本信息、全部称重记录（含作废）、混料 / 涂布异常说明（可编辑保存）。</summary>
 public sealed class WorkOrderDetailDialog : DialogWindow
 {
-    private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
+    private readonly OrderService _orders;
     private readonly IAuditLog _audit;
     private readonly string _actor;
     private readonly int _orderId;
@@ -22,19 +21,17 @@ public sealed class WorkOrderDetailDialog : DialogWindow
     private readonly CheckBox _coat;
     private readonly TextBox _coatNote;
 
-    public WorkOrderDetailDialog(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuditLog audit, string actor,
+    public WorkOrderDetailDialog(OrderService orders, IAuditLog audit, string actor,
         int orderId, string formulaName)
         : base($"工单详情 #{orderId}", 980, "保存异常说明", "关闭")
     {
-        _dbFactory = dbFactory;
+        _orders = orders;
         _audit = audit;
         _actor = actor;
         _orderId = orderId;
         MakeResizable(720, 720, 480);
 
-        using var db = dbFactory.CreateDbContext();
-        var wo = db.WorkOrders.Include(w => w.Records).ThenInclude(x => x.FormulaItem).ThenInclude(i => i.Material)
-            .First(w => w.Id == orderId);
+        var wo = orders.GetDetail(orderId);
 
         Body.Children.Add(new TextBlock
         {
@@ -109,13 +106,8 @@ public sealed class WorkOrderDetailDialog : DialogWindow
     {
         try
         {
-            using var db = _dbFactory.CreateDbContext();
-            var e = db.WorkOrders.First(x => x.Id == _orderId);
-            e.MixingException = _mix.IsChecked == true;
-            e.MixingExceptionNote = _mix.IsChecked == true ? _mixNote.Text.Trim() : null;
-            e.CoatingException = _coat.IsChecked == true;
-            e.CoatingExceptionNote = _coat.IsChecked == true ? _coatNote.Text.Trim() : null;
-            db.SaveChanges();
+            _orders.UpdateExceptionNotes(_orderId, _mix.IsChecked == true, _mixNote.Text,
+                _coat.IsChecked == true, _coatNote.Text);
             _audit.Log("order", $"更新异常说明 工单#{_orderId}", _actor);
             Accept();
         }

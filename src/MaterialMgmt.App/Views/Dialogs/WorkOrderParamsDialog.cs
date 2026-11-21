@@ -4,23 +4,9 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using MaterialMgmt.App.Themes;
 using MaterialMgmt.Core.Abstractions;
+using MaterialMgmt.Core.Orders;
 
 namespace MaterialMgmt.App.Views.Dialogs;
-
-public sealed class WorkOrderParams
-{
-    public double Temperature { get; init; }
-    public double Humidity { get; init; }
-    public string ProductionNo { get; init; } = "";
-    public double? D50 { get; init; }
-    public bool MixingException { get; init; }
-    public string? MixingExceptionNote { get; init; }
-    public string BaseFilm { get; init; } = "";
-    public string? BatchNo { get; init; }
-    public double? Thickness { get; init; }
-    public bool CoatingException { get; init; }
-    public string? CoatingExceptionNote { get; init; }
-}
 
 /// <summary>
 /// 开始称量前填写工艺参数。

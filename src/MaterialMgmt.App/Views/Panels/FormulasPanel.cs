@@ -5,16 +5,13 @@ using MaterialMgmt.App.Services;
 using MaterialMgmt.App.Themes;
 using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Entities;
-using MaterialMgmt.Infrastructure.Data;
 using MaterialMgmt.Infrastructure.Services;
-using Microsoft.EntityFrameworkCore;
 using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
 public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
-    private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
     private readonly IAuthService _auth;
     private readonly IAuditLog _audit;
     private readonly FormulaService _formulas;
@@ -28,10 +25,9 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
     private List<Formula> _filtered = new();
     private bool _createDialogOpen;
 
-    public FormulasPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth,
+    public FormulasPanel(IAuthService auth,
         IAuditLog audit, FormulaService formulas, NavigationService nav, DeviceHub devices, IConfigService config)
     {
-        _dbFactory = dbFactory;
         _auth = auth;
         _audit = audit;
         _formulas = formulas;
@@ -107,8 +103,7 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
 
     private void Refresh()
     {
-        using var db = _dbFactory.CreateDbContext();
-        _all = db.Formulas.OrderByDescending(f => f.Id).ToList();
+        _all = _formulas.All().OrderByDescending(f => f.Id).ToList();
         Render();
     }
 
@@ -126,7 +121,7 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
 
     private void Create()
     {
-        var dlg = new FormulaCreateDialog(_dbFactory, _devices, _auth.CurrentUser?.DisplayName)
+        var dlg = new FormulaCreateDialog(_formulas, _devices, _auth.CurrentUser?.DisplayName)
         { Owner = Window.GetWindow(this) };
         _createDialogOpen = true;
         try
@@ -145,19 +140,12 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
         var list = GridKit.CheckedItems<Formula>(_grid);
         if (list.Count == 0 && GridKit.Current<Formula>(_grid) is { } row)
             list = new List<Formula> { row.Item };
-        if (list.Count == 0) { UiFeedback.Warn("请先勾选配方。"); return; }
-        using var db = _dbFactory.CreateDbContext();
-        var n = 0;
-        foreach (var f in list)
-        {
-            var entity = db.Formulas.First(x => x.Id == f.Id);
-            entity.IsActive = !entity.IsActive;
-            _audit.Log("formula", $"{(entity.IsActive ? "启用" : "停用")}配方 {entity.Code}", _auth.CurrentUser?.Username ?? "");
-            n++;
-        }
-        db.SaveChanges();
+        if (list.Count == 0) { UiFeedback.Hint("请先勾选配方"); return; }
+        var changed = _formulas.ToggleActive(list.Select(f => f.Id));
+        foreach (var f in changed)
+            _audit.Log("formula", $"{(f.IsActive ? "启用" : "停用")}配方 {f.Code}", _auth.CurrentUser?.Username ?? "");
         Refresh();
-        UiFeedback.Success($"已更新 {n} 个配方的启用状态。");
+        UiFeedback.Success($"已更新 {changed.Count} 个配方的启用状态。");
     }
 
     private Formula? CurrentFormula()
@@ -175,7 +163,7 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
             return;
         }
 
-        var dlg = new FormulaCopyDialog(_formulas, _dbFactory, src, _auth.CurrentUser?.DisplayName)
+        var dlg = new FormulaCopyDialog(_formulas, src, _auth.CurrentUser?.DisplayName)
         { Owner = Window.GetWindow(this) };
         if (dlg.ShowDialog() != true) return;
 
@@ -190,10 +178,9 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
     {
         var list = GridKit.CheckedItems<Formula>(_grid);
         if (list.Count == 0 && GridKit.Current<Formula>(_grid)?.Item is { } one) list = new List<Formula> { one };
-        if (list.Count == 0) { UiFeedback.Warn("请先勾选要删除的配方。"); return; }
+        if (list.Count == 0) { UiFeedback.Hint("请先勾选要删除的配方"); return; }
 
-        using var db = _dbFactory.CreateDbContext();
-        var blocked = list.Where(f => db.WorkOrders.Any(w => w.FormulaId == f.Id)).ToList();
+        var blocked = _formulas.WithWorkOrders(list.Select(f => f.Id));
         if (blocked.Count > 0)
         {
             var lines = string.Join("\n", blocked.Select(f => $"· {f.Code}  {f.Name}"));
@@ -204,16 +191,18 @@ public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
         if (!ConfirmDialog.Ask($"确认删除 {list.Count} 个配方及其步骤？此操作不可恢复。", "确认删除", "删除", danger: true))
             return;
 
-        foreach (var f in list)
+        try
         {
-            var entity = db.Formulas.Include(x => x.Items).First(x => x.Id == f.Id);
-            db.FormulaItems.RemoveRange(entity.Items);
-            db.Formulas.Remove(entity);
-            _audit.Log("formula", $"删除配方 {f.Code}", _auth.CurrentUser?.Username ?? "");
+            var deleted = _formulas.DeleteMany(list.Select(f => f.Id));
+            foreach (var f in deleted)
+                _audit.Log("formula", $"删除配方 {f.Code}", _auth.CurrentUser?.Username ?? "");
+            UiFeedback.Success($"已删除 {deleted.Count} 个配方。");
         }
-        db.SaveChanges();
+        catch (Exception ex)
+        {
+            UiFeedback.Warn(ex.GetBaseException().Message, "无法删除");
+        }
         Refresh();
-        UiFeedback.Success($"已删除 {list.Count} 个配方。");
     }
 }
 

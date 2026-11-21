@@ -5,15 +5,14 @@ using MaterialMgmt.App.Services;
 using MaterialMgmt.App.Themes;
 using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Entities;
-using MaterialMgmt.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using MaterialMgmt.Infrastructure.Services;
 using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
 public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
-    private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
+    private readonly MaterialService _materials;
     private readonly IAuthService _auth;
     private readonly IAuditLog _audit;
     private readonly DeviceHub _devices;
@@ -25,10 +24,10 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
     private List<Material> _filtered = new();
     private bool _editDialogOpen;
 
-    public MaterialsPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth, IAuditLog audit,
+    public MaterialsPanel(MaterialService materials, IAuthService auth, IAuditLog audit,
         DeviceHub devices, IConfigService config)
     {
-        _dbFactory = dbFactory;
+        _materials = materials;
         _auth = auth;
         _audit = audit;
         _devices = devices;
@@ -84,8 +83,7 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
 
     private void Refresh()
     {
-        using var db = _dbFactory.CreateDbContext();
-        _all = db.Materials.OrderByDescending(m => m.Id).ToList();
+        _all = _materials.All().OrderByDescending(m => m.Id).ToList();
         ApplyFilter();
     }
 
@@ -103,7 +101,7 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
 
     private void Edit(Material? existing)
     {
-        var dlg = new MaterialEditDialog(_dbFactory, _devices, existing) { Owner = Window.GetWindow(this) };
+        var dlg = new MaterialEditDialog(_materials, _devices, existing) { Owner = Window.GetWindow(this) };
         _editDialogOpen = true;
         try
         {
@@ -128,14 +126,14 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
             selected = new List<Material> { one };
         if (selected.Count == 0)
         {
-            UiFeedback.Warn("请先勾选要删除的材料。");
+            UiFeedback.Hint("请先勾选要删除的材料");
             return;
         }
         if (!ConfirmDialog.Ask($"确认删除 {selected.Count} 条原材料？", "确认删除", "删除", danger: true))
             return;
 
-        using var db = _dbFactory.CreateDbContext();
-        var blocked = selected.Where(m => db.FormulaItems.Any(i => i.MaterialId == m.Id)).ToList();
+        var ids = selected.Select(m => m.Id).ToList();
+        var blocked = _materials.ReferencedByFormulas(ids);
         if (blocked.Count > 0)
         {
             var lines = string.Join("\n", blocked.Select(m => $"· {m.Code}  {m.Name}"));
@@ -143,15 +141,17 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
             return;
         }
 
-        foreach (var m in selected)
+        try
         {
-            var entity = db.Materials.FirstOrDefault(x => x.Id == m.Id);
-            if (entity is null) continue;
-            db.Materials.Remove(entity);
-            _audit.Log("material", $"删除材料 {entity.Code}", _auth.CurrentUser?.Username ?? "");
+            var deleted = _materials.DeleteMany(ids);
+            foreach (var m in deleted)
+                _audit.Log("material", $"删除材料 {m.Code}", _auth.CurrentUser?.Username ?? "");
+            UiFeedback.Success($"已删除 {deleted.Count} 条原材料。");
         }
-        db.SaveChanges();
-        UiFeedback.Success($"已删除 {selected.Count} 条原材料。");
+        catch (Exception ex)
+        {
+            UiFeedback.Warn(ex.GetBaseException().Message, "无法删除");
+        }
         Refresh();
     }
 }

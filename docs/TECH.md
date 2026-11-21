@@ -1,6 +1,6 @@
 # 技术说明
 
-原料管理系统 WPF v4.3.0 — 运维联调与开发架构。
+原料管理系统 WPF v4.4.0 — 运维联调与开发架构。
 
 ---
 
@@ -95,7 +95,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 产物：
 
 - `dist/原料管理系统/` — 完整文件夹（须整夹分发）
-- `dist/原料管理系统-v4.3.0-win-x64.zip` — 压缩包
+- `dist/原料管理系统-v4.4.0-win-x64.zip` — 压缩包
 
 详见 [DEPLOY.md](../DEPLOY.md) 与 [hardware-checklist.md](hardware-checklist.md)。
 
@@ -153,9 +153,11 @@ App.OnStartup
 - `IAuthService` → `AuthService`
 - `IDbContextFactory<MaterialMgmtDbContext>`
 - `BarcodeInputService`、`BarcodeSerialService`（单例）
-- `OrderService`、`ExportService`、`AuditLogService`
+- `OrderService`、`FormulaService`、`MaterialService`、`UserService`、`ExportService`、`AuditLogService`
 
 `App.xaml.cs` 额外注册 `NavigationService`、`DeviceHub` 及各 `*Panel`。
+
+**分层约定**：面板与弹窗不直接写库（App 项目中没有 `SaveChanges`），增删改一律调用上述服务。服务在业务规则不满足时抛 `InvalidOperationException`（编码问题抛 `CodeError`），消息可直接展示给用户；审计日志由界面在服务调用成功后写入。新业务规则请加在服务里并补 `MaterialMgmt.Tests/Services` 下的单测。
 
 ## 2.4 DeviceHub：设备与扫码中枢
 
@@ -167,7 +169,7 @@ App.OnStartup
 | 扫码串口 | `BarcodeSerialService.Open(port, baud)` |
 | 扫码 HID | `BarcodeInputService`；`ShouldAcceptHidKeys` 控制是否喂键 |
 | 模式切换 | `ApplyScannerConfig` 根据 `ScannerInputMode` 选路 |
-| 条码发布 | `PublishBarcode(code, source)`：记录 `LastScanSource`（`serial` / `hid` / `simulated`），在 UI 线程分发 |
+| 条码发布 | 三个来源都交给 `BarcodeRouter.Publish(code, source)`（`Infrastructure/Hardware`）：串口优先时丢弃 HID 码、过滤短码、记录 `LastScanSource`（`serial` / `hid` / `simulated`），经 `DeviceHub` 注入的调度回调在 UI 线程分发 |
 | 定时任务 | `Tick`：扫码空闲检测、串口重连、秤自动重连 |
 
 ## 2.5 扫码路由到业务页
@@ -180,7 +182,7 @@ _devices.IsBarcodeExclusive = () => _weigh.ExclusiveBarcode;   // 称量进行�
 _devices.ResolveBarcodeHandler = ResolveBarcodeHandler;          // 选出接收扫码的页面
 ```
 
-分发顺序（`DeviceHub.DispatchBarcode`）：
+分发顺序（`BarcodeRouter.Publish`，`DeviceHub` 把上面两个回调转交给它）：
 
 1. `ResolveBarcodeHandler()` 选出处理器：称量进行中 → 称量窗当前页；否则跟随**前台窗口**（称量窗在前台 → 称量窗当前页，主窗在前台 → 主窗当前页）。
 2. 调用 `handler.OnBarcode(code, simulated)`。
@@ -217,7 +219,7 @@ CRC16 Modbus。若现场天平协议不同，需修改 `ScaleWorker`。
 ## 2.8 BarcodeSerialService 分帧
 
 `DataReceived` 回调中按字符累积，遇 `\r` 或 `\n` 输出一行（长度 ≥ 4）。  
-与 HID 路径在 `DeviceHub` 汇合，统一 `NormalizeCode`（Trim）。
+与 HID 路径在 `BarcodeRouter` 汇合，统一 `Normalize`（Trim）。
 
 ## 2.9 数据库
 
@@ -245,6 +247,9 @@ dotnet run --project MaterialMgmt.App
 - `OrderRulesTests` — 进行中工单不可删除
 - `DbSmokeTests` — 数据库初始化（临时目录，不碰 `data/` 下的在用库）
 - `SchemaMigrationTests` — v3.0 / v4.1 / v4.2.2 三个时期的库升级到最新、重复启动不再迁移、失败回滚与恢复备份
+- `Services/*Tests` — 原料、配方步骤、账号、开工单的业务规则；`ExportServiceTests` 覆盖只导出有效记录、优先用快照（旧记录回退当前配方）、扫码来源列、多工单分表
+- `Hardware/BarcodeRouterTests` — 用真实 `BarcodeInputService` 作假 HID 设备，验证串口优先、短码过滤、独占不广播、模拟扫码标记
+- 服务类测试继承 `TestHost`：每个测试一个临时根目录与新库，不碰 `data/` 下的在用库
 
 ## 2.11 扩展建议
 

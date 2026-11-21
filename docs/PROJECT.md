@@ -1,6 +1,6 @@
 # 项目结构与模块对照
 
-原料管理系统 WPF v4.3.0 — 文件、代码分层与功能映射。
+原料管理系统 WPF v4.4.0 — 文件、代码分层与功能映射。
 
 ## 仓库目录
 
@@ -107,8 +107,11 @@ Material_Mgmt_wpf/
 | 配置 | `Infrastructure/Services/ConfigService.cs` | `settings.ini` 读写 |
 | 数据库 | `Infrastructure/Data/DbBootstrap.cs` | 建库、调用结构迁移（失败时用启动备份恢复）、种子账号、WAL、v4.2 角色迁移、启动 / 退出 / 手动备份、有效记录唯一索引 |
 | 结构迁移 | `Infrastructure/Data/Migrations/SchemaMigrations.cs` + `SchemaMigrator.cs` | 有序迁移列表，版本记在 `PRAGMA user_version`；每步一个事务、按“列不存在才加”编写，任何时期的旧库都可从第 1 步执行；新字段在列表末尾追加一步（单测覆盖 v3.0 / v4.1 / v4.2.2 三个时期） |
-| 工单 | `Infrastructure/Services/OrderService.cs` | 保存称重（含快照、扫码来源）/完成/作废有效记录（含原因）；进行中工单及进度（`ActiveOrders`）；配方进行中引用校验；重复有效记录修复；删除走 `OrderRules` |
-| 配方 | `Infrastructure/Services/FormulaService.cs` | 含复制配方 |
+| 工单 | `Infrastructure/Services/OrderService.cs` | 开工单（`Create`，参数 `WorkOrderParams`）、详情（`GetDetail`）、异常说明（`UpdateExceptionNotes`）；保存称重（含快照、扫码来源）/完成/作废有效记录（含原因）；进行中工单及进度（`ActiveOrders`）；配方进行中引用校验；重复有效记录修复；删除走 `OrderRules` |
+| 配方 | `Infrastructure/Services/FormulaService.cs` | 新建 / 复制 / 批量删除（有工单的拒绝）；步骤增改（`StepInput`）、排序、删除（有称重记录的拒绝），配方有进行中工单时步骤写操作一律拒绝 |
+| 原料 | `Infrastructure/Services/MaterialService.cs` | 新建 / 修改（编码重复或格式错误抛 `CodeError`）、批量删除（被配方引用的拒绝） |
+| 账号 | `Infrastructure/Services/UserService.cs` | 业务人员账号新建 / 改姓名 / 重置密码（走 `PasswordPolicy`）/ 禁用 / 删除（可选解除工单关联） |
+| 扫码分发 | `Infrastructure/Hardware/BarcodeRouter.cs` | 串口优先时丢弃 HID 码、过滤短码、记录最近扫码与来源、独占时只发给处理器否则再广播（单测用真实 `BarcodeInputService` 作假设备覆盖） |
 | 配方序号 | `Core/Formulas/FormulaSequence.cs` | `(formula_id, sequence)` 唯一索引的两阶段写入 |
 | 导出 | `Infrastructure/Export/ExportService.cs` | ClosedXML Excel |
 
@@ -127,7 +130,7 @@ Material_Mgmt_wpf/
 
 ```
 扫码枪 (USB COM 或 HID)
-    → DeviceHub.PublishBarcode
+    → DeviceHub → BarcodeRouter.Publish（过滤、记录来源）
     → ResolveBarcodeHandler：
          进行中称量 → 称量窗独占
          否则 → 前台焦点窗（主窗或称量窗）当前面板

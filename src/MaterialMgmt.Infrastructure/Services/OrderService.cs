@@ -14,6 +14,68 @@ public sealed class OrderService
         _factory = factory;
     }
 
+    /// <summary>开工单（进行中）。配方不存在或没有步骤时抛 <see cref="InvalidOperationException"/>。返回新工单 Id。</summary>
+    public int Create(int formulaId, int operatorId, string operatorName, WorkOrderParams p)
+    {
+        using var db = _factory.CreateDbContext();
+        if (!db.Formulas.Any(f => f.Id == formulaId))
+            throw new InvalidOperationException($"配方 {formulaId} 不存在");
+        if (!db.FormulaItems.Any(i => i.FormulaId == formulaId))
+            throw new InvalidOperationException("该配方没有步骤，无法开始称量");
+
+        var wo = new WorkOrder
+        {
+            FormulaId = formulaId,
+            OperatorId = operatorId,
+            Operator = operatorName,
+            StartTime = DateTime.Now,
+            Status = OrderRules.InProgress,
+            Temperature = p.Temperature,
+            Humidity = p.Humidity,
+            ProductionNo = p.ProductionNo,
+            D50 = p.D50,
+            MixingException = p.MixingException,
+            MixingExceptionNote = p.MixingExceptionNote,
+            BaseFilm = p.BaseFilm,
+            BatchNo = p.BatchNo,
+            Thickness = p.Thickness,
+            CoatingException = p.CoatingException,
+            CoatingExceptionNote = p.CoatingExceptionNote
+        };
+        db.WorkOrders.Add(wo);
+        db.SaveChanges();
+        return wo.Id;
+    }
+
+    public bool FormulaHasSteps(int formulaId)
+    {
+        using var db = _factory.CreateDbContext();
+        return db.FormulaItems.Any(i => i.FormulaId == formulaId);
+    }
+
+    /// <summary>工单详情（只读）：含全部称重记录（有效与作废）及其步骤、原料。</summary>
+    public WorkOrder GetDetail(int workOrderId)
+    {
+        using var db = _factory.CreateDbContext();
+        return db.WorkOrders.AsNoTracking()
+                   .Include(w => w.Records).ThenInclude(x => x.FormulaItem).ThenInclude(i => i.Material)
+                   .FirstOrDefault(w => w.Id == workOrderId)
+               ?? throw new InvalidOperationException($"工单 {workOrderId} 不存在");
+    }
+
+    /// <summary>更新混料 / 涂布异常说明；未勾选异常时清空对应说明。</summary>
+    public void UpdateExceptionNotes(int workOrderId, bool mixing, string? mixingNote, bool coating, string? coatingNote)
+    {
+        using var db = _factory.CreateDbContext();
+        var wo = db.WorkOrders.FirstOrDefault(x => x.Id == workOrderId)
+                 ?? throw new InvalidOperationException($"工单 {workOrderId} 不存在");
+        wo.MixingException = mixing;
+        wo.MixingExceptionNote = mixing ? mixingNote?.Trim() : null;
+        wo.CoatingException = coating;
+        wo.CoatingExceptionNote = coating ? coatingNote?.Trim() : null;
+        db.SaveChanges();
+    }
+
     public void Cancel(int workOrderId)
     {
         using var db = _factory.CreateDbContext();

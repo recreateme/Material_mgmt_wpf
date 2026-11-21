@@ -6,16 +6,15 @@ using MaterialMgmt.App.Themes;
 using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Entities;
 using MaterialMgmt.Core.Formulas;
-using MaterialMgmt.Infrastructure.Data;
 using MaterialMgmt.Infrastructure.Services;
-using Microsoft.EntityFrameworkCore;
 using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
 public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
-    private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
+    private readonly FormulaService _formulas;
+    private readonly MaterialService _materialService;
     private readonly IAuthService _auth;
     private readonly IAuditLog _audit;
     private readonly NavigationService _nav;
@@ -63,10 +62,11 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
     /// <summary>添加步骤时插入到该步骤之后；null 表示追加到末尾。</summary>
     private int? _addAfterItemId;
 
-    public FormulaEditorPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth,
+    public FormulaEditorPanel(FormulaService formulas, MaterialService materials, IAuthService auth,
         IAuditLog audit, NavigationService nav, OrderService orders)
     {
-        _dbFactory = dbFactory;
+        _formulas = formulas;
+        _materialService = materials;
         _auth = auth;
         _audit = audit;
         _nav = nav;
@@ -167,15 +167,13 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
 
     private void Reload(int? selectItemId = null)
     {
-        using var db = _dbFactory.CreateDbContext();
-        var f = db.Formulas.Include(x => x.Items).ThenInclude(i => i.Material)
-            .FirstOrDefault(x => x.Id == _formulaId);
+        var f = _formulas.GetWithSteps(_formulaId);
         if (f is null) return;
         _formulaCode = f.Code;
         _breadcrumb.Text = $"配方管理  >  编辑 {f.Code}";
         _title.Text = f.Name;
-        _materials = db.Materials.OrderBy(m => m.Code).ToList();
-        _items = f.Items.OrderBy(i => i.Sequence).ToList();
+        _materials = _materialService.All();
+        _items = f.Items.ToList();
         _grid.ItemsSource = GridKit.Wrap(_items);
         RefreshLock();
         _empty.Update(_items.Count, filtered: false);
@@ -274,70 +272,33 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
     /// <summary>写库；成功返回 null，失败返回错误说明（显示在步骤对话框里）。</summary>
     private string? SaveStep(FormulaItem? existing, StepInput input)
     {
+        int focusId;
         try
         {
-            _orders.EnsureFormulaStepsEditable(_formulaId);
+            if (existing is null)
+            {
+                focusId = _formulas.AddStep(_formulaId, input, _addAfterItemId);
+                _addAfterItemId = focusId;
+            }
+            else
+            {
+                _formulas.UpdateStep(existing.Id, input);
+                focusId = existing.Id;
+            }
         }
         catch (InvalidOperationException ex)
         {
             RefreshLock();
             return ex.Message;
         }
-
-        try
-        {
-            using var db = _dbFactory.CreateDbContext();
-            int focusId;
-            if (existing is null)
-            {
-                var ordered = db.FormulaItems
-                    .Where(i => i.FormulaId == _formulaId)
-                    .OrderBy(i => i.Sequence)
-                    .ToList();
-                var insertIndex = ordered.Count;
-                if (_addAfterItemId is int afterId)
-                {
-                    var idx = ordered.FindIndex(x => x.Id == afterId);
-                    if (idx >= 0) insertIndex = idx + 1;
-                }
-
-                var entity = new FormulaItem
-                {
-                    FormulaId = _formulaId,
-                    MaterialId = input.MaterialId,
-                    Sequence = FormulaSequence.TempOffset + ordered.Count + 1,
-                    WeightMin = input.Min,
-                    WeightMax = input.Max,
-                    Notes = input.Notes
-                };
-                db.FormulaItems.Add(entity);
-                db.SaveChanges();
-                focusId = entity.Id;
-
-                var ids = ordered.Select(x => x.Id).ToList();
-                ids.Insert(insertIndex, entity.Id);
-                ApplySequencePhases(db, ids);
-                _addAfterItemId = entity.Id;
-            }
-            else
-            {
-                var e = db.FormulaItems.First(i => i.Id == existing.Id);
-                e.MaterialId = input.MaterialId;
-                e.WeightMin = input.Min;
-                e.WeightMax = input.Max;
-                e.Notes = input.Notes;
-                db.SaveChanges();
-                focusId = e.Id;
-            }
-
-            _audit.Log("formula", $"编辑配方步骤 formulaId={_formulaId}", _auth.CurrentUser?.Username ?? "");
-            Reload(focusId);
-            return null;
-        }
         catch (Exception ex)
         {
             return $"保存失败：{ex.GetBaseException().Message}";
         }
+
+        _audit.Log("formula", $"编辑配方步骤 formulaId={_formulaId}", _auth.CurrentUser?.Username ?? "");
+        Reload(focusId);
+        return null;
     }
 
     private void Move(int dir)
@@ -372,8 +333,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         if (!EnsureEditable()) return;
         try
         {
-            using var db = _dbFactory.CreateDbContext();
-            ApplySequencePhases(db, ids);
+            _formulas.Reorder(_formulaId, ids);
         }
         catch (Exception ex)
         {
@@ -419,19 +379,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
 
         try
         {
-            using var db = _dbFactory.CreateDbContext();
-            var ids = selected.Select(x => x.Id).ToHashSet();
-            var entities = db.FormulaItems.Where(x => ids.Contains(x.Id)).ToList();
-            db.FormulaItems.RemoveRange(entities);
-            db.SaveChanges();
-
-            var remain = db.FormulaItems
-                .Where(i => i.FormulaId == _formulaId)
-                .OrderBy(i => i.Sequence)
-                .Select(i => i.Id)
-                .ToList();
-            if (remain.Count > 0)
-                ApplySequencePhases(db, remain);
+            _formulas.DeleteSteps(_formulaId, selected.Select(x => x.Id));
         }
         catch (Exception ex)
         {
@@ -442,17 +390,6 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
 
         Reload();
         UiFeedback.Success(selected.Count == 1 ? "步骤已删除。" : $"已删除 {selected.Count} 个步骤。");
-    }
-
-    private static void ApplySequencePhases(MaterialMgmtDbContext db, IReadOnlyList<int> orderedIds)
-    {
-        var phases = FormulaSequence.BuildTwoPhase(orderedIds);
-        foreach (var (id, seq) in phases.Take(orderedIds.Count))
-            db.FormulaItems.First(x => x.Id == id).Sequence = seq;
-        db.SaveChanges();
-        foreach (var (id, seq) in phases.Skip(orderedIds.Count))
-            db.FormulaItems.First(x => x.Id == id).Sequence = seq;
-        db.SaveChanges();
     }
 
     private void Complete()

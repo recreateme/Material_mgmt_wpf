@@ -101,7 +101,7 @@ public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHan
     private void ShowDetail()
     {
         if (CurrentOrder() is not { } r) { UiFeedback.Warn("请先选择工单。"); return; }
-        var dlg = new WorkOrderDetailDialog(_dbFactory, _audit, _auth.CurrentUser?.Username ?? "", r.Id, r.FormulaName)
+        var dlg = new WorkOrderDetailDialog(_orders, _audit, _auth.CurrentUser?.Username ?? "", r.Id, r.FormulaName)
         { Owner = Window.GetWindow(this) };
         if (dlg.ShowDialog() == true)
             UiFeedback.Success($"工单 #{r.Id} 的异常说明已保存。");

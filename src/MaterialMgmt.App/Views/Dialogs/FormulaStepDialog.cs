@@ -11,8 +11,6 @@ public sealed record StepMaterialOption(int Id, string Code, string Display)
     public static StepMaterialOption From(Material m) => new(m.Id, m.Code, $"{m.Code}  {m.Name}");
 }
 
-public sealed record StepInput(int MaterialId, double Min, double Max, string? Notes);
-
 /// <summary>
 /// 添加 / 编辑配方步骤。上下限实时校验；添加时可“保存并继续添加”，表单清空后留在对话框里。
 /// 写库由调用方的 <c>save</c> 完成：返回 null 表示成功，否则返回错误说明显示在表单里。

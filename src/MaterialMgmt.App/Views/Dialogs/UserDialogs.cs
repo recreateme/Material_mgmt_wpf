@@ -3,17 +3,14 @@ using System.Windows.Controls;
 using MaterialMgmt.App.Themes;
 using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Auth;
-using MaterialMgmt.Core.Entities;
-using MaterialMgmt.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using MaterialMgmt.Infrastructure.Services;
 
 namespace MaterialMgmt.App.Views.Dialogs;
 
 /// <summary>新增 / 编辑业务人员。userId 为 null 表示新增。</summary>
 public sealed class UserEditDialog : DialogWindow
 {
-    private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
-    private readonly IAuthService _auth;
+    private readonly UserService _users;
     private readonly IAuditLog _audit;
     private readonly CurrentUser _actor;
     private readonly int? _userId;
@@ -21,12 +18,11 @@ public sealed class UserEditDialog : DialogWindow
     private readonly TextBox _display;
     private readonly PasswordBox? _password;
 
-    public UserEditDialog(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth, IAuditLog audit,
+    public UserEditDialog(UserService users, IAuditLog audit,
         CurrentUser actor, int? userId, string? username, string? displayName)
         : base(userId is null ? "新增业务人员" : "编辑业务人员", 400)
     {
-        _dbFactory = dbFactory;
-        _auth = auth;
+        _users = users;
         _audit = audit;
         _actor = actor;
         _userId = userId;
@@ -42,7 +38,6 @@ public sealed class UserEditDialog : DialogWindow
     {
         try
         {
-            using var db = _dbFactory.CreateDbContext();
             if (_userId is null)
             {
                 var name = _username.Text.Trim();
@@ -50,28 +45,16 @@ public sealed class UserEditDialog : DialogWindow
                 if (_password is null) return;
                 if (PasswordPolicy.Validate(name, _password.Password) is { } problem)
                 { ShowError(_password, problem); return; }
-                if (db.Users.Any(u => u.Username == name)) { ShowError(_username, "该用户名已存在"); return; }
+                if (_users.UsernameExists(name)) { ShowError(_username, "该用户名已存在"); return; }
 
-                db.Users.Add(new User
-                {
-                    Username = name,
-                    DisplayName = string.IsNullOrWhiteSpace(_display.Text) ? name : _display.Text.Trim(),
-                    Role = Roles.Business,
-                    PasswordHash = _auth.HashPassword(_password.Password),
-                    IsActive = true,
-                    CreatedAt = DateTime.Now
-                });
+                _users.CreateBusiness(name, _display.Text, _password.Password);
                 _audit.Log("user", $"创建业务人员 {name}", _actor.Username);
             }
             else
             {
-                var u = db.Users.First(x => x.Id == _userId);
-                if (u.Role != Roles.Business) { ShowError(_display, "只能编辑业务人员账号"); return; }
-                u.DisplayName = _display.Text.Trim();
-                u.UpdatedAt = DateTime.Now;
+                var u = _users.UpdateDisplayName(_userId.Value, _display.Text);
                 _audit.Log("user", $"编辑业务人员 {u.Username}", _actor.Username);
             }
-            db.SaveChanges();
             Accept();
         }
         catch (Exception ex)
@@ -137,20 +120,19 @@ public sealed class LinkedUserActionDialog : DialogWindow
 /// <summary>系统管理员重置业务人员密码。</summary>
 public sealed class ResetPasswordDialog : DialogWindow
 {
-    private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
-    private readonly IAuthService _auth;
+    private readonly UserService _users;
     private readonly IAuditLog _audit;
+    private readonly string _actor;
     private readonly int _userId;
     private readonly string _username;
     private readonly PasswordBox _password;
 
-    public ResetPasswordDialog(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth, IAuditLog audit,
-        int userId, string username)
+    public ResetPasswordDialog(UserService users, IAuditLog audit, string actor, int userId, string username)
         : base("重置密码", 360, "确定")
     {
-        _dbFactory = dbFactory;
-        _auth = auth;
+        _users = users;
         _audit = audit;
+        _actor = actor;
         _userId = userId;
         _username = username;
         Body.Children.Add(new TextBlock
@@ -168,12 +150,8 @@ public sealed class ResetPasswordDialog : DialogWindow
         { ShowError(_password, problem); return; }
         try
         {
-            using var db = _dbFactory.CreateDbContext();
-            var u = db.Users.First(x => x.Id == _userId);
-            u.PasswordHash = _auth.HashPassword(_password.Password);
-            u.UpdatedAt = DateTime.Now;
-            db.SaveChanges();
-            _audit.Log("user", $"重置密码 {u.Username}", _auth.CurrentUser?.Username ?? "");
+            _users.ResetPassword(_userId, _password.Password);
+            _audit.Log("user", $"重置密码 {_username}", _actor);
             Accept();
         }
         catch (Exception ex)
