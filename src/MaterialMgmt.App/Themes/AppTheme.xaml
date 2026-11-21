@@ -25,6 +25,7 @@
     <Color x:Key="C.Success">#16A34A</Color>
     <Color x:Key="C.SuccessSoft">#ECFDF5</Color>
     <Color x:Key="C.Warning">#D97706</Color>
+    <Color x:Key="C.WarningSoft">#FFFBEB</Color>
     <Color x:Key="C.Danger">#DC2626</Color>
     <Color x:Key="C.DangerHover">#EF4444</Color>
     <Color x:Key="C.DangerSoft">#FEF2F2</Color>

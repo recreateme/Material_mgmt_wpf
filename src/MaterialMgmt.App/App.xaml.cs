@@ -17,6 +17,8 @@ public partial class App : Application
 {
     private ServiceProvider? _services;
     private DbBootstrap? _bootstrap;
+    private string? _logPath;
+    private bool _loggedIn;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -29,6 +31,7 @@ public partial class App : Application
         Directory.CreateDirectory(paths.LogsDir);
         Directory.CreateDirectory(paths.DataDir);
         Directory.CreateDirectory(paths.ConfigDir);
+        _logPath = paths.AppLogPath;
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
@@ -86,6 +89,7 @@ public partial class App : Application
             MainWindow = main;
             main.OnLogin(login.LoggedInUser);
             main.Show();
+            _loggedIn = true;
             ShutdownMode = ShutdownMode.OnMainWindowClose;
             Log.Information("用户 {User} ({Role}) 已登录，主窗口已显示",
                 login.LoggedInUser.Username, login.LoggedInUser.Role);
@@ -98,19 +102,32 @@ public partial class App : Application
         }
     }
 
-    protected override async void OnExit(ExitEventArgs e)
+    protected override void OnExit(ExitEventArgs e)
     {
-        if (_bootstrap is not null)
-            await _bootstrap.ShutdownAsync();
+        var boot = _bootstrap;
+        if (boot is not null)
+        {
+            var loggedIn = _loggedIn;
+            // 进程即将结束：同步等待（后台线程执行，避免 UI 线程上的 async 续体在退出时丢失）
+            var done = Task.Run(async () =>
+            {
+                if (loggedIn) await boot.BackupAsync("exit");
+                await boot.ShutdownAsync();
+            }).Wait(TimeSpan.FromSeconds(30));
+            if (!done) Log.Warning("退出备份 / WAL checkpoint 超时（30 秒），已跳过");
+        }
         _services?.Dispose();
         Log.CloseAndFlush();
         base.OnExit(e);
     }
 
-    private static void OnUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)
+    private void OnUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         Log.Fatal(e.Exception, "未捕获异常");
-        MessageBox.Show(e.Exception.ToString()[^Math.Min(2000, e.Exception.ToString().Length)..],
+        var logPath = _logPath ?? "logs\\app.log";
+        MessageBox.Show(
+            $"程序遇到意外错误：{e.Exception.GetBaseException().Message}\n\n" +
+            $"当前操作可能未完成，请检查后重试。详细信息已写入日志：\n{logPath}",
             "程序异常", MessageBoxButton.OK, MessageBoxImage.Error);
         e.Handled = true;
     }

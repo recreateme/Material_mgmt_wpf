@@ -7,6 +7,7 @@ using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Entities;
 using MaterialMgmt.Core.Formulas;
 using MaterialMgmt.Infrastructure.Data;
+using MaterialMgmt.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using MaterialMgmt.App.Views.Dialogs;
 
@@ -24,7 +25,27 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         FontSize = 18, FontWeight = FontWeights.Bold, Margin = new Thickness(12, 0, 8, 0),
         VerticalAlignment = VerticalAlignment.Center
     };
+    private readonly OrderService _orders;
     private readonly DataGrid _grid = new();
+    /// <summary>步骤操作按钮的容器：配方被进行中工单引用时整体禁用。</summary>
+    private readonly WrapPanel _stepActions = new() { Orientation = Orientation.Horizontal };
+    private readonly Border _lockBanner = new()
+    {
+        Background = UiTheme.Brush(UiTheme.WarningSoft),
+        BorderBrush = UiTheme.Brush(UiTheme.Warning),
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(8),
+        Padding = new Thickness(14, 8, 14, 8),
+        Margin = new Thickness(0, 8, 0, 0),
+        Visibility = Visibility.Collapsed
+    };
+    private readonly TextBlock _lockText = new()
+    {
+        FontWeight = FontWeights.SemiBold,
+        Foreground = UiTheme.Brush(UiTheme.Text),
+        TextWrapping = TextWrapping.Wrap
+    };
+    private bool _locked;
     private int _formulaId;
     private string _formulaCode = "";
     private List<FormulaItem> _items = new();
@@ -36,12 +57,13 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
     private int? _addAfterItemId;
 
     public FormulaEditorPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth,
-        IAuditLog audit, NavigationService nav)
+        IAuditLog audit, NavigationService nav, OrderService orders)
     {
         _dbFactory = dbFactory;
         _auth = auth;
         _audit = audit;
         _nav = nav;
+        _orders = orders;
         Build();
     }
 
@@ -88,25 +110,29 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         bar.Children.Add(_title);
         var add = UiTheme.PrimaryButton("添加步骤");
         add.Click += (_, _) => EditStep(null);
-        bar.Children.Add(add);
+        _stepActions.Children.Add(add);
         var up = UiTheme.GhostButton("上移");
         up.Click += (_, _) => Move(-1);
-        bar.Children.Add(up);
+        _stepActions.Children.Add(up);
         var down = UiTheme.GhostButton("下移");
         down.Click += (_, _) => Move(1);
-        bar.Children.Add(down);
+        _stepActions.Children.Add(down);
         var del = UiTheme.DangerButton("删除步骤");
         del.Click += (_, _) => DeleteStep();
-        bar.Children.Add(del);
+        _stepActions.Children.Add(del);
         var saveOrder = UiTheme.GhostButton("保存顺序");
         saveOrder.Click += (_, _) => SaveOrder();
-        bar.Children.Add(saveOrder);
+        _stepActions.Children.Add(saveOrder);
+        ToolTipService.SetShowOnDisabled(_stepActions, true);
+        bar.Children.Add(_stepActions);
         var finish = UiTheme.PrimaryButton("完成");
         finish.Click += (_, _) => Complete();
         bar.Children.Add(finish);
         GridKit.AddSelectButtons(bar, _grid);
 
         header.Children.Add(bar);
+        _lockBanner.Child = _lockText;
+        header.Children.Add(_lockBanner);
         header.Children.Add(new TextBlock
         {
             Text = "请添加称量步骤并设置大于 0 的上下限。可扫码选料。" +
@@ -132,7 +158,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         _grid.Columns.Add(GridKit.Text("备注", "Item.Notes", new DataGridLength(1, DataGridLengthUnitType.Star), align: TextAlignment.Left));
         _grid.MouseDoubleClick += (_, _) =>
         {
-            if (CurrentStep() is { } it) EditStep(it);
+            if (!_locked && CurrentStep() is { } it) EditStep(it);
         };
 
         root.Children.Add(header);
@@ -153,6 +179,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         _items = f.Items.OrderBy(i => i.Sequence).ToList();
         _grid.ItemsSource = GridKit.Wrap(_items);
         _orderDirty = false;
+        RefreshLock();
 
         if (selectItemId is int sid)
         {
@@ -168,6 +195,43 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
 
     private FormulaItem? CurrentStep()
         => GridKit.Current<FormulaItem>(_grid)?.Item;
+
+    /// <summary>被进行中工单引用的配方禁止修改步骤：显示原因并禁用全部步骤操作。</summary>
+    private void RefreshLock()
+    {
+        var active = _orders.ActiveOrdersForFormula(_formulaId);
+        _locked = active.Count > 0;
+        _stepActions.IsEnabled = !_locked;
+        if (_locked)
+        {
+            var reason = OrderService.DescribeActiveOrders(active) + "，完成或取消后才能修改步骤。";
+            _lockText.Text = "⚠ " + reason;
+            _stepActions.ToolTip = reason;
+            _lockBanner.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            _stepActions.ToolTip = null;
+            _lockBanner.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>写库前复核：编辑页打开期间可能有人用该配方开了工单。不可改时提示并刷新锁定状态。</summary>
+    private bool EnsureEditable(Window? owner = null)
+    {
+        try
+        {
+            _orders.EnsureFormulaStepsEditable(_formulaId);
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (owner is null) MessageBox.Show(ex.Message, "无法修改步骤", MessageBoxButton.OK, MessageBoxImage.Warning);
+            else MessageBox.Show(owner, ex.Message, "无法修改步骤", MessageBoxButton.OK, MessageBoxImage.Warning);
+            RefreshLock();
+            return false;
+        }
+    }
 
     private void GoBack()
     {
@@ -188,6 +252,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
 
     private void EditStep(FormulaItem? existing)
     {
+        if (!EnsureEditable()) return;
         if (_materials.Count == 0) { MessageBox.Show("请先创建原材料"); return; }
 
         // 新增：记住当前光标行，保存时插到其后；无选中则追加末尾
@@ -275,6 +340,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
             MessageBox.Show(dlg, "请输入大于 0 的上下限（下限 ≤ 上限）", "提示");
             return;
         }
+        if (!EnsureEditable(dlg)) return;
 
         try
         {
@@ -334,6 +400,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
 
     private void Move(int dir)
     {
+        if (_locked) return;
         if (CurrentStep() is not { } it)
         {
             MessageBox.Show("请先选择一个步骤", "提示");
@@ -366,25 +433,50 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
             return;
         }
 
+        if (!EnsureEditable()) return;
+
+        // 已有称重记录（含已完成工单、作废记录）的步骤不能删：删除会让历史记录失去对应步骤
+        var used = _orders.StepsWithRecords(selected.Select(x => x.Id));
+        if (used.Count > 0)
+        {
+            var seqs = string.Join("、", selected.Where(x => used.Contains(x.Id))
+                .OrderBy(x => x.Sequence).Select(x => $"第 {x.Sequence} 步"));
+            MessageBox.Show(
+                $"{seqs}已有称重记录，不能删除（历史工单需要按步骤追溯）。\n" +
+                "如需调整配方，建议复制为新配方后再修改。",
+                "无法删除", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         var tip = selected.Count == 1
             ? "确认删除该步骤？"
             : $"确认删除选中的 {selected.Count} 个步骤？";
         if (!ConfirmDialog.Ask(tip, "确认删除", "删除", danger: true))
             return;
 
-        using var db = _dbFactory.CreateDbContext();
-        var ids = selected.Select(x => x.Id).ToHashSet();
-        var entities = db.FormulaItems.Where(x => ids.Contains(x.Id)).ToList();
-        db.FormulaItems.RemoveRange(entities);
-        db.SaveChanges();
+        try
+        {
+            using var db = _dbFactory.CreateDbContext();
+            var ids = selected.Select(x => x.Id).ToHashSet();
+            var entities = db.FormulaItems.Where(x => ids.Contains(x.Id)).ToList();
+            db.FormulaItems.RemoveRange(entities);
+            db.SaveChanges();
 
-        var remain = db.FormulaItems
-            .Where(i => i.FormulaId == _formulaId)
-            .OrderBy(i => i.Sequence)
-            .Select(i => i.Id)
-            .ToList();
-        if (remain.Count > 0)
-            ApplySequencePhases(db, remain);
+            var remain = db.FormulaItems
+                .Where(i => i.FormulaId == _formulaId)
+                .OrderBy(i => i.Sequence)
+                .Select(i => i.Id)
+                .ToList();
+            if (remain.Count > 0)
+                ApplySequencePhases(db, remain);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"删除步骤失败：{ex.GetBaseException().Message}", "删除失败",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            Reload();
+            return;
+        }
 
         Reload();
         UiFeedback.Success(selected.Count == 1 ? "步骤已删除。" : $"已删除 {selected.Count} 个步骤。");
@@ -393,6 +485,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
     private bool SaveOrder(bool silent = false)
     {
         if (_items.Count == 0) return true;
+        if (!EnsureEditable()) return false;
         try
         {
             var ids = _items.Select(x => x.Id).ToList();
@@ -429,7 +522,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
             return;
         }
 
-        if (!SaveOrder(silent: true)) return;
+        if (_orderDirty && !SaveOrder(silent: true)) return;
         _audit.Log("formula", $"完成配方编辑 {_formulaCode}", _auth.CurrentUser?.Username ?? "");
         UiFeedback.Success($"配方 {_formulaCode} 已保存，共 {_items.Count} 个步骤。", "配方编辑完成");
         _nav.Navigate(AppPage.Formulas);

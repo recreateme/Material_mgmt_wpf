@@ -7,8 +7,11 @@ using MaterialMgmt.App.Themes;
 using MaterialMgmt.Core.Abstractions;
 using MaterialMgmt.Core.Auth;
 using MaterialMgmt.Core.Orders;
+using MaterialMgmt.App.Views.Dialogs;
 using MaterialMgmt.Infrastructure.Data;
+using MaterialMgmt.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using System.IO;
 
 namespace MaterialMgmt.App.Views.Panels;
 
@@ -19,16 +22,23 @@ public sealed class HomePanel : UserControl, IPageLifecycle
     private readonly NavigationService _nav;
     private readonly WeighWorkspace _weigh;
     private readonly DeviceHub _devices;
+    private readonly DbBootstrap _bootstrap;
+    private readonly OrderService _orders;
+    private readonly IAuditLog _audit;
     private readonly StackPanel _body = new() { Margin = new Thickness(24) };
 
     public HomePanel(IAuthService auth, IDbContextFactory<MaterialMgmtDbContext> dbFactory,
-        NavigationService nav, WeighWorkspace weigh, DeviceHub devices)
+        NavigationService nav, WeighWorkspace weigh, DeviceHub devices,
+        DbBootstrap bootstrap, OrderService orders, IAuditLog audit)
     {
         _auth = auth;
         _dbFactory = dbFactory;
         _nav = nav;
         _weigh = weigh;
         _devices = devices;
+        _bootstrap = bootstrap;
+        _orders = orders;
+        _audit = audit;
         Content = new ScrollViewer { Content = _body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         _devices.ScaleStatusChanged += () => Dispatcher.Invoke(RefreshDevices);
         _devices.ScannerStatusChanged += () => Dispatcher.Invoke(RefreshDevices);
@@ -158,6 +168,102 @@ public sealed class HomePanel : UserControl, IPageLifecycle
         _deviceRow = new WrapPanel { Margin = new Thickness(0, 0, 0, 16) };
         _body.Children.Add(_deviceRow);
         RefreshDevices();
+
+        if (user.IsSystemAdmin())
+            AddDataSafetySection();
+    }
+
+    /// <summary>系统管理员：最近备份时间、立即备份；称重记录唯一索引未建成时给出修复入口。</summary>
+    private void AddDataSafetySection()
+    {
+        _body.Children.Add(SectionTitle("数据安全"));
+
+        if (!_bootstrap.ValidIndexReady)
+        {
+            var dupes = _orders.CountDuplicateValidGroups();
+            var warn = new DockPanel();
+            var fix = UiTheme.DangerButton("修复");
+            fix.Margin = new Thickness(12, 0, 0, 0);
+            fix.Click += async (_, _) => await RepairDuplicatesAsync(dupes);
+            DockPanel.SetDock(fix, Dock.Right);
+            warn.Children.Add(fix);
+            warn.Children.Add(new TextBlock
+            {
+                Text = $"⚠ 发现 {dupes} 组“同一工单同一步骤有多条有效称重记录”的历史数据，数据库保护未生效。\n" +
+                       "修复将保留每组最新一条，其余标为作废（原因：系统修复），可在工单详情中查看。修复前会先自动备份。",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = UiTheme.Brush(UiTheme.Danger),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            var warnCard = UiTheme.Card(warn, new Thickness(16, 12, 12, 12));
+            warnCard.Background = UiTheme.Brush(UiTheme.DangerSoft);
+            warnCard.BorderBrush = UiTheme.Brush(UiTheme.Danger);
+            warnCard.Margin = new Thickness(0, 0, 0, 12);
+            _body.Children.Add(warnCard);
+        }
+
+        var latest = _bootstrap.LatestBackupTime();
+        var text = new TextBlock
+        {
+            Text = latest is null ? "尚无备份" : $"最近备份：{latest:yyyy-MM-dd HH:mm}",
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var hint = new TextBlock
+        {
+            Text = $"每次启动与退出自动备份，各保留最近 14 份。位置：{_bootstrap.BackupDir}",
+            FontSize = UiTheme.FontCaption,
+            Foreground = UiTheme.Brush(UiTheme.Muted),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 4, 0, 0)
+        };
+        var now = UiTheme.GhostButton("立即备份");
+        now.Margin = new Thickness(12, 0, 0, 0);
+        now.Click += async (_, _) =>
+        {
+            now.IsEnabled = false;
+            var path = await _bootstrap.BackupAsync("manual");
+            now.IsEnabled = true;
+            if (path is null)
+            {
+                UiFeedback.Warn("备份失败，详情见日志。");
+                return;
+            }
+            _audit.Log("system", $"手动备份数据库 {Path.GetFileName(path)}", _auth.CurrentUser?.Username ?? "");
+            text.Text = $"最近备份：{DateTime.Now:yyyy-MM-dd HH:mm}";
+            UiFeedback.Success("数据库已备份");
+        };
+        var row = new DockPanel();
+        DockPanel.SetDock(now, Dock.Right);
+        row.Children.Add(now);
+        row.Children.Add(new StackPanel { Children = { text, hint } });
+        var card = UiTheme.Card(row, new Thickness(16, 12, 12, 12));
+        card.MaxWidth = 720;
+        card.HorizontalAlignment = HorizontalAlignment.Left;
+        _body.Children.Add(card);
+    }
+
+    private async Task RepairDuplicatesAsync(int groups)
+    {
+        if (!ConfirmDialog.Ask(
+                $"将修复 {groups} 组重复有效记录：每组保留最新一条，其余标为作废。\n修复前会先备份数据库。是否继续？",
+                "修复称重记录", "开始修复", danger: true))
+            return;
+        try
+        {
+            await _bootstrap.BackupAsync("repair");
+            var n = _orders.RepairDuplicateValidRecords(_auth.CurrentUser?.Username);
+            var ok = await _bootstrap.TryCreateValidIndexAsync();
+            _audit.Log("system", $"修复重复有效称重记录：作废 {n} 条，索引{(ok ? "已建立" : "仍未建立")}",
+                _auth.CurrentUser?.Username ?? "");
+            if (ok) UiFeedback.Success($"已修复，作废 {n} 条重复记录");
+            else UiFeedback.Warn("记录已修复，但数据库保护仍未生效，详情见日志。");
+        }
+        catch (Exception ex)
+        {
+            UiFeedback.Warn($"修复失败：{ex.GetBaseException().Message}");
+        }
+        Rebuild();
     }
 
     private void AddResumeWorkOrderCard(CurrentUser user)

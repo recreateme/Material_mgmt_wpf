@@ -21,6 +21,7 @@ public sealed class DeviceHub : IDisposable
     private bool _serialWired;
     private ScannerInputMode _activeMode = ScannerInputMode.Auto;
     private bool _useSerialPath;
+    private bool _rawFrameLog;
 
     public event Action? ScaleStatusChanged;
     public event Action? ScannerStatusChanged;
@@ -43,6 +44,8 @@ public sealed class DeviceHub : IDisposable
 
     public bool IsScaleConnected => _scale?.IsOpen == true;
     public string LastScanCode { get; private set; } = "";
+    /// <summary>最近一次扫码的来源（<see cref="ScanSources"/>）；分发给页面前已更新，页面在 OnBarcode 内读取即为本次来源。</summary>
+    public string LastScanSource { get; private set; } = "";
     public bool IsScannerListening { get; private set; }
     public string ScaleLastError { get; private set; } = "";
     public string ScannerLastError { get; private set; } = "";
@@ -104,16 +107,18 @@ public sealed class DeviceHub : IDisposable
     private void OnHidBarcode(string code)
     {
         if (_useSerialPath) return;
-        PublishBarcode(code, simulated: false);
+        PublishBarcode(code, ScanSources.Hid);
     }
 
-    private void OnSerialBarcode(string code) => PublishBarcode(code, simulated: false);
+    private void OnSerialBarcode(string code) => PublishBarcode(code, ScanSources.Serial);
 
-    private void PublishBarcode(string code, bool simulated)
+    private void PublishBarcode(string code, string source)
     {
         var normalized = NormalizeCode(code);
         if (normalized.Length < 4) return;
+        var simulated = source == ScanSources.Simulated;
         LastScanCode = normalized;
+        LastScanSource = source;
         _lastScanAt = DateTime.Now;
         IsScannerListening = true;
         ScannerStatusChanged?.Invoke();
@@ -144,7 +149,14 @@ public sealed class DeviceHub : IDisposable
     {
         _autoReconnect = config.AutoConnect;
         _preferredPort = config.SerialPort;
+        _rawFrameLog = IsRawFrameLogOn(config);
     }
+
+    /// <summary>[serial] raw_frame_log = true 时把天平收发的原始帧写入日志（排查协议问题用，日志量较大）。</summary>
+    private static bool IsRawFrameLogOn(IConfigService config)
+        => bool.TryParse(config.GetValue("serial", "raw_frame_log", "false"), out var v) && v;
+
+    private static void WriteFrameLog(string line) => Serilog.Log.Information("天平原始帧 {Frame}", line);
 
     /// <summary>登录后：电子秤自动发现 + 按配置打开扫码通道。</summary>
     public void BeginAutoConnectAfterLogin(IConfigService config)
@@ -276,6 +288,7 @@ public sealed class DeviceHub : IDisposable
         try
         {
             var worker = new ScaleWorker(port, baud);
+            if (_rawFrameLog) worker.FrameLog = WriteFrameLog;
             _scale = worker;
             // 仅转发当前 worker 的读数，避免已被替换的旧 worker 残留事件串入
             worker.WeightUpdated += (w, stable, overload) =>
@@ -365,6 +378,7 @@ public sealed class DeviceHub : IDisposable
         }
 
         _autoReconnect = config.AutoConnect;
+        _rawFrameLog = IsRawFrameLogOn(config);
         if (_userDisconnected || !_autoReconnect || IsScaleConnected || IsDiscovering) return;
         if (DateTime.Now < _retryAfter) return;
 
@@ -394,7 +408,7 @@ public sealed class DeviceHub : IDisposable
 
     public void SimulateBarcode(string code)
     {
-        PublishBarcode(code, simulated: true);
+        PublishBarcode(code, ScanSources.Simulated);
     }
 
     /// <summary>硬件自检：返回 (秤口可开, 扫码通道说明)。</summary>

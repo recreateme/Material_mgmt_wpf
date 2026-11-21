@@ -22,6 +22,7 @@ public static class UiTheme
     public static readonly Color Success = Res("C.Success");
     public static readonly Color SuccessSoft = Res("C.SuccessSoft");
     public static readonly Color Warning = Res("C.Warning");
+    public static readonly Color WarningSoft = Res("C.WarningSoft");
     public static readonly Color Danger = Res("C.Danger");
     public static readonly Color DangerSoft = Res("C.DangerSoft");
     public static readonly Color BannerStart = Res("C.BannerStart");

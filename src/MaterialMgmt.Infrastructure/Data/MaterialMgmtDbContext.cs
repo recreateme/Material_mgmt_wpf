@@ -140,6 +140,8 @@ public sealed class MaterialMgmtDbContext : DbContext
             e.Property(x => x.MaterialNameSnapshot).HasColumnName("material_name_snapshot").HasMaxLength(128);
             e.Property(x => x.VoidedAt).HasColumnName("voided_at");
             e.Property(x => x.VoidedBy).HasColumnName("voided_by").HasMaxLength(64);
+            e.Property(x => x.VoidReason).HasColumnName("void_reason").HasMaxLength(256);
+            e.Property(x => x.ScanSource).HasColumnName("scan_source").HasMaxLength(16);
             // 同一工单同一步骤至多一条有效记录（数据库层兜底；旧库见 DbBootstrap.EnsureIntegrityAsync）
             e.HasIndex(x => new { x.WorkOrderId, x.FormulaItemId })
                 .IsUnique()

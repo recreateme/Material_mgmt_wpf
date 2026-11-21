@@ -138,6 +138,8 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
     private DateTime _attachedAt = DateTime.MinValue;
     private DateTime _zeroedAt = DateTime.MinValue;
     private bool _readingLost;
+    /// <summary>当前步骤被接受的那次扫码的来源，随称重记录落库。</summary>
+    private string? _scanSource;
     private WeighState _lastState = WeighState.WaitingScan;
     private int _outOfRangeCount;
     private readonly DispatcherTimer _watchdog = new() { Interval = TimeSpan.FromMilliseconds(250) };
@@ -221,6 +223,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
         }
         var status = _engine.OnBarcode(code);
         if (status.IsError) _sound.Play(SoundCue.WrongScan);
+        else _scanSource = _devices.LastScanSource;
         ApplyStatus(status);
         RefreshUi();
     }
@@ -733,18 +736,26 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
         if (_engine is null || _engine.IsComplete) return;
         if (!_validWeights.ContainsKey(item.Id)) return;
 
-        var tip =
-            $"重新称量第 {index + 1} 步「{item.Material.Name}」？\n" +
-            "将作废该步原有效记录；其后已完成步骤保留。";
-        if (!ConfirmDialog.Ask(tip, "重新称量", "重新称量", danger: true))
+        var reason = ReworkReasonDialog.Ask($"第 {index + 1} 步「{item.Material.Name}」");
+        if (reason is null)
         {
             FocusPanel();
             return;
         }
 
-        var n = _orders.InvalidateValidRecords(_workOrderId, item.Id, _auth.CurrentUser?.Username);
+        int n;
+        try
+        {
+            n = _orders.InvalidateValidRecords(_workOrderId, item.Id, _auth.CurrentUser?.Username, reason);
+        }
+        catch (Exception ex)
+        {
+            UiFeedback.Warn($"作废原记录失败，未进入重称：{ex.Message}");
+            FocusPanel();
+            return;
+        }
         _audit.Log("order",
-            $"工单#{_workOrderId} 回称步骤 item={item.Id}（作废 {n} 条记录）",
+            $"工单#{_workOrderId} 回称步骤 item={item.Id}（作废 {n} 条记录，原因：{reason}）",
             _auth.CurrentUser?.Username ?? "");
         var status = _engine.RewindToStep(index);
         ApplyStatus(status);
@@ -863,7 +874,7 @@ public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHan
 
             // 先落库，成功后才前进；失败则保持当前步骤，可直接重试
             _orders.SavePendingWeight(pending.WorkOrderId, pending.FormulaItemId,
-                pending.BarcodeScanned, pending.ActualWeight, pending.Timestamp);
+                pending.BarcodeScanned, pending.ActualWeight, pending.Timestamp, _scanSource);
             status = _engine.CommitConfirm();
 
             try

@@ -13,17 +13,20 @@ public sealed class DbBootstrap
     private readonly IAppPaths _paths;
     private readonly IDbContextFactory<MaterialMgmtDbContext> _factory;
     private readonly IAuthService _auth;
+    private readonly IConfigService _config;
     private readonly ILogger<DbBootstrap> _logger;
 
     public DbBootstrap(
         IAppPaths paths,
         IDbContextFactory<MaterialMgmtDbContext> factory,
         IAuthService auth,
+        IConfigService config,
         ILogger<DbBootstrap> logger)
     {
         _paths = paths;
         _factory = factory;
         _auth = auth;
+        _config = config;
         _logger = logger;
     }
 
@@ -44,8 +47,30 @@ public sealed class DbBootstrap
         _logger.LogInformation("数据库初始化完成：{Path}", _paths.DatabasePath);
     }
 
-    /// <summary>备份保留份数（每次启动一份）。</summary>
+    /// <summary>每种备份原因（startup / exit / manual）各自保留的份数。</summary>
     private const int BackupKeep = 14;
+
+    /// <summary>启动时“有效记录唯一索引”是否建成；false 表示旧数据存在重复有效记录，需管理员修复。</summary>
+    public bool ValidIndexReady { get; private set; } = true;
+
+    public string BackupDir => Path.Combine(_paths.DataDir, "backup");
+
+    /// <summary>最近一次备份文件的写入时间；没有备份时为 null。</summary>
+    public DateTime? LatestBackupTime()
+    {
+        try
+        {
+            if (!Directory.Exists(BackupDir)) return null;
+            var latest = new DirectoryInfo(BackupDir).GetFiles("material_mgmt_*.db")
+                .OrderByDescending(f => f.LastWriteTime)
+                .FirstOrDefault();
+            return latest?.LastWriteTime;
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// 用 SQLite VACUUM INTO 生成一致性快照到 data/backup/。失败只记日志，不阻断启动。
@@ -58,7 +83,7 @@ public sealed class DbBootstrap
             var src = _paths.DatabasePath;
             if (!File.Exists(src) || new FileInfo(src).Length == 0) return null;
 
-            var dir = Path.Combine(_paths.DataDir, "backup");
+            var dir = BackupDir;
             Directory.CreateDirectory(dir);
             var target = Path.Combine(dir, $"material_mgmt_{DateTime.Now:yyyyMMdd_HHmmss}_{reason}.db");
             if (File.Exists(target)) return null;
@@ -73,7 +98,7 @@ public sealed class DbBootstrap
             }
             _logger.LogInformation("数据库已备份：{Path}", target);
 
-            var old = new DirectoryInfo(dir).GetFiles("material_mgmt_*.db")
+            var old = new DirectoryInfo(dir).GetFiles($"material_mgmt_*_{reason}.db")
                 .OrderByDescending(f => f.Name)
                 .Skip(BackupKeep);
             foreach (var f in old)
@@ -196,6 +221,8 @@ public sealed class DbBootstrap
         await AddWr("material_name_snapshot", "material_name_snapshot VARCHAR(128)");
         await AddWr("voided_at", "voided_at DATETIME");
         await AddWr("voided_by", "voided_by VARCHAR(64)");
+        await AddWr("void_reason", "void_reason VARCHAR(256)");
+        await AddWr("scan_source", "scan_source VARCHAR(16)");
 
         var fcols = await GetColumnsAsync(db, "formulas", ct);
         if (!fcols.Contains("code"))
@@ -224,17 +251,32 @@ WHERE weight_min_snapshot IS NULL AND weight_max_snapshot IS NULL", cancellation
             _logger.LogWarning(ex, "回填称重记录快照失败（已忽略）");
         }
 
+        await TryCreateValidIndexAsync(db, ct);
+    }
+
+    /// <summary>重复有效记录修复后由界面调用，重新创建唯一索引。</summary>
+    public async Task<bool> TryCreateValidIndexAsync(CancellationToken ct = default)
+    {
+        await using var db = await _factory.CreateDbContextAsync(ct);
+        return await TryCreateValidIndexAsync(db, ct);
+    }
+
+    private async Task<bool> TryCreateValidIndexAsync(MaterialMgmtDbContext db, CancellationToken ct)
+    {
         try
         {
             await db.Database.ExecuteSqlRawAsync(
                 "CREATE UNIQUE INDEX IF NOT EXISTS ux_weight_records_valid " +
                 "ON weight_records(work_order_id, formula_item_id) WHERE is_valid = 1",
                 cancellationToken: ct);
+            ValidIndexReady = true;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "创建 ux_weight_records_valid 失败：旧数据可能存在同一步骤的重复有效记录，请人工核查");
+            ValidIndexReady = false;
+            _logger.LogWarning(ex, "创建 ux_weight_records_valid 失败：旧数据存在同一步骤的重复有效记录，等待系统管理员在首页修复");
         }
+        return ValidIndexReady;
     }
 
     private static async Task StampAlembicAsync(MaterialMgmtDbContext db, string rev, CancellationToken ct)
@@ -319,7 +361,7 @@ WHERE weight_min_snapshot IS NULL AND weight_max_snapshot IS NULL", cancellation
             var old = u.Role;
             u.Role = newRole;
             if (newRole == Roles.SystemAdmin &&
-                u.DisplayName is "管理人员" or "开发人员" or "李园涛")
+                (u.DisplayName is "管理人员" or "开发人员" || IsLegacyAdminName(u.DisplayName)))
                 u.DisplayName = "系统管理员";
             _logger.LogInformation("角色已迁移：{User} {Old} → {New}", u.Username, old, newRole);
         }
@@ -335,10 +377,20 @@ WHERE weight_min_snapshot IS NULL AND weight_max_snapshot IS NULL", cancellation
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>将历史账号「李园涛」合并为 admin（密码保持不变）。</summary>
+    /// <summary>
+    /// 旧版曾用个人账号充当管理员。在 settings.ini 的 [migration] legacy_admin_username 写上该用户名，
+    /// 启动时会把它合并为 admin（密码保持不变）；未配置时不做任何事。
+    /// </summary>
+    private string LegacyAdminUsername => _config.GetValue("migration", "legacy_admin_username", "").Trim();
+
+    private bool IsLegacyAdminName(string? name)
+        => LegacyAdminUsername.Length > 0 && string.Equals(name, LegacyAdminUsername, StringComparison.Ordinal);
+
     private async Task MigrateLegacyAdminAccountAsync(MaterialMgmtDbContext db, CancellationToken ct)
     {
-        var legacy = await db.Users.FirstOrDefaultAsync(x => x.Username == "李园涛", ct);
+        var legacyName = LegacyAdminUsername;
+        if (legacyName.Length == 0 || legacyName == "admin") return;
+        var legacy = await db.Users.FirstOrDefaultAsync(x => x.Username == legacyName, ct);
         if (legacy is null) return;
 
         var admin = await db.Users.FirstOrDefaultAsync(x => x.Username == "admin", ct);
@@ -347,11 +399,11 @@ WHERE weight_min_snapshot IS NULL AND weight_max_snapshot IS NULL", cancellation
 
         legacy.Username = "admin";
         if (string.IsNullOrWhiteSpace(legacy.DisplayName) ||
-            legacy.DisplayName is "李园涛" or "管理人员" or "系统管理员")
+            legacy.DisplayName is "管理人员" or "系统管理员" || legacy.DisplayName == legacyName)
             legacy.DisplayName = "系统管理员";
         legacy.Role = Roles.LegacyAdmin; // 随后由 MigrateRolesV42Async 转为 system_admin
         legacy.IsActive = true;
-        _logger.LogInformation("已将账号「李园涛」重命名为 admin（密码未改）");
+        _logger.LogInformation("已将历史管理员账号「{User}」重命名为 admin（密码未改）", legacyName);
         await db.SaveChangesAsync(ct);
     }
 }

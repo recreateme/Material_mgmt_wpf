@@ -1,4 +1,4 @@
-# 部署与数据迁移说明（WPF v4.2.2）
+# 部署与数据迁移说明（WPF v4.2.3）
 
 上手操作请先看 [docs/quickstart.md](docs/quickstart.md)。
 
@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 - 自包含 `win-x64`，目标机**无需安装 .NET**
 - **自动备份并恢复**现有 `dist\...\data\material_mgmt.db`（含 wal/shm）
 - **自动备份并恢复**现有 `config\settings.ini`
-- 产物：`dist\原料管理系统\` 与 `dist\原料管理系统-v4.2.2-win-x64.zip`
+- 产物：`dist\原料管理系统\` 与 `dist\原料管理系统-v4.2.3-win-x64.zip`
 
 ## 3. 目标机部署
 
@@ -74,12 +74,12 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 
 ## 6. 默认种子账号（仅空库）
 
-| 用户名 | 密码 | 角色 |
-|--------|------|------|
-| admin | 88888888 | 系统管理员（账号维护 + 设置） |
-| operator | operator123 | 业务人员（原料/配方/称量/工单） |
+| 用户名 | 角色 |
+|--------|------|
+| admin | 系统管理员（账号维护 + 设置） |
+| operator | 业务人员（原料/配方/称量/工单） |
 
-> 默认密码首次登录强制修改；启动时自动备份数据库到 `data\backup\`（保留最近 14 份），升级迁移前的备份同样在此。
+> 初始密码见发布包内「初始账号.txt」交付单，首次登录强制修改。启动、正常退出时各自动备份一次数据库到 `data\backup\`（每种各保留最近 14 份），升级迁移前的备份同样在此；系统管理员首页可查看最近备份时间并“立即备份”。
 
 ## 7. 常见问题
 

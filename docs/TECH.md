@@ -1,6 +1,6 @@
 # 技术说明
 
-原料管理系统 WPF v4.2.2 — 运维联调与开发架构。
+原料管理系统 WPF v4.2.3 — 运维联调与开发架构。
 
 ---
 
@@ -95,7 +95,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 产物：
 
 - `dist/原料管理系统/` — 完整文件夹（须整夹分发）
-- `dist/原料管理系统-v4.2.2-win-x64.zip` — 压缩包
+- `dist/原料管理系统-v4.2.3-win-x64.zip` — 压缩包
 
 详见 [DEPLOY.md](../DEPLOY.md) 与 [hardware-checklist.md](hardware-checklist.md)。
 
@@ -167,21 +167,26 @@ App.OnStartup
 | 扫码串口 | `BarcodeSerialService.Open(port, baud)` |
 | 扫码 HID | `BarcodeInputService`；`ShouldAcceptHidKeys` 控制是否喂键 |
 | 模式切换 | `ApplyScannerConfig` 根据 `ScannerInputMode` 选路 |
-| 条码发布 | `PublishBarcode` → `BarcodeRouted` 事件（UI 线程） |
+| 条码发布 | `PublishBarcode(code, source)`：记录 `LastScanSource`（`serial` / `hid` / `simulated`），在 UI 线程分发 |
 | 定时任务 | `Tick`：扫码空闲检测、串口重连、秤自动重连 |
 
 ## 2.5 扫码路由到业务页
 
+`DeviceHub` 不直接认识页面，由主窗在 `WireBarcodeRouting` 里注入两个回调：
+
 ```csharp
 // MainWindow.xaml.cs
-_devices.BarcodeRouted += (code, simulated) =>
-{
-    if (_nav.Current 对应面板 is IBarcodeHandler handler)
-        handler.OnBarcode(code, simulated);
-};
+_devices.IsBarcodeExclusive = () => _weigh.ExclusiveBarcode;   // 称量进行中
+_devices.ResolveBarcodeHandler = ResolveBarcodeHandler;          // 选出接收扫码的页面
 ```
 
-仅**当前导航页**收到扫码，避免后台页误触发。列表页扫码写入筛选框；编码弹窗扫码自动勾选手工指定并填入。配方编辑步骤弹窗打开时，扫原料码会选中对应材料。
+分发顺序（`DeviceHub.DispatchBarcode`）：
+
+1. `ResolveBarcodeHandler()` 选出处理器：称量进行中 → 称量窗当前页；否则跟随**前台窗口**（称量窗在前台 → 称量窗当前页，主窗在前台 → 主窗当前页）。
+2. 调用 `handler.OnBarcode(code, simulated)`。
+3. 非称量独占时，再广播 `BarcodeRouted` 事件；`BarcodeFillHelper` 用它把扫码填入弹窗里的编码框（如原料编辑对话框）。
+
+仅**当前页**收到扫码，避免后台页误触发。列表页扫码写入筛选框；编码弹窗扫码自动勾选手工指定并填入；配方编辑步骤弹窗打开时，扫原料码会选中对应材料。称量页拒绝 `simulated = true` 的码，接受的扫码来源随称重记录写入 `weight_records.scan_source`。
 
 ## 2.6 WorkflowEngine 状态机
 

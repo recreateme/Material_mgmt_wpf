@@ -24,6 +24,9 @@ public sealed class ScaleWorker : IDisposable
     public event Action? Connected;
     public event Action? Disconnected;
 
+    /// <summary>原始帧日志（调试天平协议用，默认不设置）：参数为“方向 + 十六进制帧”。</summary>
+    public Action<string>? FrameLog { get; set; }
+
     public ScaleWorker(string portName, int baudRate = 9600, ILogger<ScaleWorker>? logger = null)
     {
         PortName = portName;
@@ -38,25 +41,36 @@ public sealed class ScaleWorker : IDisposable
         _loop = Task.Run(() => RunAsync(_cts.Token));
     }
 
+    /// <summary>
+    /// 停止轮询。先关闭串口让阻塞中的读写立即失败，再短暂等待循环退出，
+    /// 调用线程（通常是界面线程）不再被 600ms 读超时拖住；返回时串口已释放，可立即重连同一端口。
+    /// </summary>
     public void Stop()
     {
         _cts?.Cancel();
-        try { _loop?.Wait(2000); } catch { /* ignore */ }
         ClosePort();
+        try { _loop?.Wait(500); } catch { /* ignore */ }
     }
 
     public void SendZero() => _sendZero = true;
 
     private async Task RunAsync(CancellationToken ct)
     {
+        SerialPort port;
         try
         {
-            _port = new SerialPort(PortName, BaudRate, Parity.None, 8, StopBits.One)
+            port = new SerialPort(PortName, BaudRate, Parity.None, 8, StopBits.One)
             {
                 ReadTimeout = 600,
                 WriteTimeout = 600
             };
-            _port.Open();
+            port.Open();
+            _port = port;
+            if (ct.IsCancellationRequested)
+            {
+                ClosePort();
+                return;
+            }
             Connected?.Invoke();
             _logger?.LogInformation("天平已连接：{Port} {Baud}", PortName, BaudRate);
         }
@@ -75,13 +89,16 @@ public sealed class ScaleWorker : IDisposable
                 {
                     if (_sendZero)
                     {
-                        _port!.Write(ZeroCmd, 0, ZeroCmd.Length);
-                        _ = ReadExact(8);
+                        port.Write(ZeroCmd, 0, ZeroCmd.Length);
+                        LogFrame("TX", ZeroCmd);
+                        LogFrame("RX", ReadExact(port, 8));
                         _sendZero = false;
                     }
 
-                    _port!.Write(ReadCmd, 0, ReadCmd.Length);
-                    var data = ReadExact(13);
+                    port.Write(ReadCmd, 0, ReadCmd.Length);
+                    LogFrame("TX", ReadCmd);
+                    var data = ReadExact(port, 13);
+                    LogFrame("RX", data);
                     var parsed = Parse(data);
                     if (parsed is { } p)
                     {
@@ -95,8 +112,10 @@ public sealed class ScaleWorker : IDisposable
                             throw new IOException("连续无有效响应，天平可能已断开");
                     }
                 }
-                catch (Exception ex) when (ex is TimeoutException or IOException or UnauthorizedAccessException or InvalidOperationException)
+                catch (Exception ex) when (ex is TimeoutException or IOException or UnauthorizedAccessException
+                                               or InvalidOperationException or ObjectDisposedException)
                 {
+                    if (ct.IsCancellationRequested) break;
                     failStreak++;
                     _logger?.LogWarning(ex, "天平读取异常");
                     if (failStreak >= 15)
@@ -117,28 +136,37 @@ public sealed class ScaleWorker : IDisposable
         }
     }
 
-    private byte[] ReadExact(int count)
+    private static byte[] ReadExact(SerialPort port, int count)
     {
         var buf = new byte[count];
         var read = 0;
         while (read < count)
         {
-            var n = _port!.Read(buf, read, count - read);
+            var n = port.Read(buf, read, count - read);
             if (n <= 0) throw new TimeoutException("串口读超时");
             read += n;
         }
         return buf;
     }
 
+    private void LogFrame(string dir, byte[] frame)
+    {
+        var log = FrameLog;
+        if (log is null) return;
+        try { log($"{PortName} {dir} {Convert.ToHexString(frame)}"); } catch { /* 日志失败不影响读数 */ }
+    }
+
+    /// <summary>可由 Stop（界面线程）与读循环（后台线程）同时调用，只有一方真正关闭。</summary>
     private void ClosePort()
     {
+        var port = Interlocked.Exchange(ref _port, null);
+        if (port is null) return;
         try
         {
-            if (_port is { IsOpen: true }) _port.Close();
+            if (port.IsOpen) port.Close();
         }
         catch { /* ignore */ }
-        _port?.Dispose();
-        _port = null;
+        port.Dispose();
     }
 
     internal static (double Weight, bool Stable, bool Overload)? Parse(byte[] data)

@@ -51,7 +51,8 @@ public sealed class OrderService
     }
 
     public WeightRecord SavePendingWeight(
-        int workOrderId, int formulaItemId, string barcode, double weight, DateTime timestamp)
+        int workOrderId, int formulaItemId, string barcode, double weight, DateTime timestamp,
+        string? scanSource = null)
     {
         using var db = _factory.CreateDbContext();
         // 落库时固化当时的限值与原料名称，之后改配方不影响历史判定
@@ -67,7 +68,8 @@ public sealed class OrderService
             WeightMinSnapshot = item?.WeightMin,
             WeightMaxSnapshot = item?.WeightMax,
             MaterialCodeSnapshot = item?.Material?.Code,
-            MaterialNameSnapshot = item?.Material?.Name
+            MaterialNameSnapshot = item?.Material?.Name,
+            ScanSource = scanSource
         };
         db.WeightRecords.Add(record);
         db.SaveChanges();
@@ -84,7 +86,8 @@ public sealed class OrderService
     }
 
     /// <summary>作废某步全部有效称重记录（回称前调用）。返回作废条数。</summary>
-    public int InvalidateValidRecords(int workOrderId, int formulaItemId, string? voidedBy = null)
+    public int InvalidateValidRecords(int workOrderId, int formulaItemId, string? voidedBy = null,
+        string? reason = null)
     {
         using var db = _factory.CreateDbContext();
         var list = db.WeightRecords
@@ -96,9 +99,91 @@ public sealed class OrderService
             r.IsValid = false;
             r.VoidedAt = now;
             r.VoidedBy = voidedBy;
+            r.VoidReason = reason;
         }
         db.SaveChanges();
         return list.Count;
+    }
+
+    /// <summary>引用该配方且仍在进行中的工单（未删除），按 ID 升序。</summary>
+    public List<ActiveOrderRef> ActiveOrdersForFormula(int formulaId)
+    {
+        using var db = _factory.CreateDbContext();
+        return db.WorkOrders
+            .Where(w => w.FormulaId == formulaId && w.Status == OrderRules.InProgress && w.DeletedAt == null)
+            .OrderBy(w => w.Id)
+            .Select(w => new ActiveOrderRef(w.Id, w.ProductionNo, w.Operator))
+            .ToList();
+    }
+
+    /// <summary>
+    /// 配方步骤可修改的前置校验：被进行中工单引用时抛 <see cref="InvalidOperationException"/>。
+    /// 保存前调用，防止编辑页打开期间有人开了新工单。
+    /// </summary>
+    public void EnsureFormulaStepsEditable(int formulaId)
+    {
+        var active = ActiveOrdersForFormula(formulaId);
+        if (active.Count > 0)
+            throw new InvalidOperationException(DescribeActiveOrders(active) + "，完成或取消后才能修改步骤。");
+    }
+
+    public static string DescribeActiveOrders(IReadOnlyList<ActiveOrderRef> active)
+    {
+        var list = string.Join("、", active.Take(5).Select(a =>
+            string.IsNullOrWhiteSpace(a.ProductionNo) ? $"#{a.Id}" : $"#{a.Id}（{a.ProductionNo}）"));
+        if (active.Count > 5) list += " 等";
+        return $"该配方有 {active.Count} 张进行中工单：{list}";
+    }
+
+    /// <summary>给定步骤中已有称重记录（含作废记录）的步骤 ID。这些步骤删除后历史记录将无法追溯，必须保留。</summary>
+    public HashSet<int> StepsWithRecords(IEnumerable<int> formulaItemIds)
+    {
+        var ids = formulaItemIds.ToList();
+        using var db = _factory.CreateDbContext();
+        return db.WeightRecords
+            .Where(r => ids.Contains(r.FormulaItemId))
+            .Select(r => r.FormulaItemId)
+            .Distinct()
+            .ToHashSet();
+    }
+
+    /// <summary>同一工单同一步骤存在多条有效记录的组数（正常应为 0）。</summary>
+    public int CountDuplicateValidGroups()
+    {
+        using var db = _factory.CreateDbContext();
+        return db.WeightRecords
+            .Where(r => r.IsValid)
+            .GroupBy(r => new { r.WorkOrderId, r.FormulaItemId })
+            .Count(g => g.Count() > 1);
+    }
+
+    /// <summary>
+    /// 修复重复有效记录：每组保留最新一条，其余标为作废（原因“系统修复”），单事务。返回作废条数。
+    /// </summary>
+    public int RepairDuplicateValidRecords(string? voidedBy)
+    {
+        using var db = _factory.CreateDbContext();
+        var dupes = db.WeightRecords
+            .Where(r => r.IsValid)
+            .AsEnumerable()
+            .GroupBy(r => (r.WorkOrderId, r.FormulaItemId))
+            .Where(g => g.Count() > 1)
+            .ToList();
+        var now = DateTime.Now;
+        var n = 0;
+        foreach (var g in dupes)
+        {
+            foreach (var r in g.OrderByDescending(x => x.Timestamp).ThenByDescending(x => x.Id).Skip(1))
+            {
+                r.IsValid = false;
+                r.VoidedAt = now;
+                r.VoidedBy = voidedBy;
+                r.VoidReason = VoidReasons.SystemRepair;
+                n++;
+            }
+        }
+        db.SaveChanges();
+        return n;
     }
 
     public HashSet<int> GetValidFormulaItemIds(int workOrderId)
@@ -143,5 +228,7 @@ public sealed class OrderService
         db.SaveChanges();
     }
 }
+
+public sealed record ActiveOrderRef(int Id, string? ProductionNo, string Operator);
 
 public sealed record OrderSummary(DateTime StartTime, DateTime? EndTime, int StepCount, int ReworkCount);

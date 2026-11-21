@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using MaterialMgmt.Core.Entities;
+using MaterialMgmt.Core.Hardware;
+using MaterialMgmt.Core.Orders;
 using MaterialMgmt.Infrastructure;
 using MaterialMgmt.Infrastructure.Data;
 using MaterialMgmt.Infrastructure.Services;
@@ -106,6 +108,79 @@ public class OrderServiceTests : IAsyncLifetime
         Assert.NotNull(wo.DeletedAt);
         Assert.Equal("tester", wo.DeletedBy);
         Assert.Equal(1, await db.WeightRecords.CountAsync(r => r.WorkOrderId == _orderId));
+    }
+
+    [Fact]
+    public async Task Invalidate_StoresReason_AndSaveStoresScanSource()
+    {
+        _orders.SavePendingWeight(_orderId, _itemId, "MAT-T00001", 1.5, DateTime.Now, ScanSources.Serial);
+        _orders.InvalidateValidRecords(_orderId, _itemId, "tester", VoidReasons.Compose(VoidReasons.Other, " 秤盘有残料 "));
+
+        await using var db = await _factory.CreateDbContextAsync();
+        var voided = await db.WeightRecords.SingleAsync(r => !r.IsValid);
+        Assert.Equal("其他：秤盘有残料", voided.VoidReason);
+        Assert.Equal(ScanSources.Serial, voided.ScanSource);
+    }
+
+    [Fact]
+    public async Task FormulaSteps_LockedWhileOrderInProgress_UnlockedAfterComplete()
+    {
+        int formulaId;
+        await using (var db = await _factory.CreateDbContextAsync())
+            formulaId = (await db.WorkOrders.SingleAsync(w => w.Id == _orderId)).FormulaId;
+
+        var active = _orders.ActiveOrdersForFormula(formulaId);
+        Assert.Single(active);
+        var ex = Assert.Throws<InvalidOperationException>(() => _orders.EnsureFormulaStepsEditable(formulaId));
+        Assert.Contains($"#{_orderId}", ex.Message);
+
+        _orders.CompleteWorkOrder(_orderId);
+        Assert.Empty(_orders.ActiveOrdersForFormula(formulaId));
+        _orders.EnsureFormulaStepsEditable(formulaId);
+    }
+
+    [Fact]
+    public void StepsWithRecords_IncludesVoidedRecords()
+    {
+        Assert.Empty(_orders.StepsWithRecords(new[] { _itemId }));
+        _orders.SavePendingWeight(_orderId, _itemId, "MAT-T00001", 1.5, DateTime.Now);
+        _orders.InvalidateValidRecords(_orderId, _itemId, "tester", VoidReasons.ReadingAbnormal);
+        Assert.Contains(_itemId, _orders.StepsWithRecords(new[] { _itemId }));
+    }
+
+    [Fact]
+    public async Task RepairDuplicateValidRecords_KeepsLatest_AndIndexCanBeCreated()
+    {
+        await using (var db = await _factory.CreateDbContextAsync())
+        {
+            // 模拟没有唯一索引的旧库里留下的重复有效记录
+            await db.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS ux_weight_records_valid");
+            db.WeightRecords.Add(new WeightRecord { WorkOrderId = _orderId, FormulaItemId = _itemId, ActualWeight = 1.1, Timestamp = DateTime.Now.AddMinutes(-2) });
+            db.WeightRecords.Add(new WeightRecord { WorkOrderId = _orderId, FormulaItemId = _itemId, ActualWeight = 1.2, Timestamp = DateTime.Now });
+            await db.SaveChangesAsync();
+        }
+        var boot = _sp.GetRequiredService<DbBootstrap>();
+        Assert.Equal(1, _orders.CountDuplicateValidGroups());
+
+        Assert.Equal(1, _orders.RepairDuplicateValidRecords("admin"));
+        Assert.Equal(0, _orders.CountDuplicateValidGroups());
+        Assert.True(await boot.TryCreateValidIndexAsync());
+
+        await using var db2 = await _factory.CreateDbContextAsync();
+        var valid = await db2.WeightRecords.SingleAsync(r => r.IsValid);
+        Assert.Equal(1.2, valid.ActualWeight);
+        var voided = await db2.WeightRecords.SingleAsync(r => !r.IsValid);
+        Assert.Equal(VoidReasons.SystemRepair, voided.VoidReason);
+    }
+
+    [Fact]
+    public async Task Backup_KeepsFilesPerReason()
+    {
+        var boot = _sp.GetRequiredService<DbBootstrap>();
+        var path = await boot.BackupAsync("manual");
+        Assert.NotNull(path);
+        Assert.True(File.Exists(path));
+        Assert.NotNull(boot.LatestBackupTime());
     }
 
     [Fact]

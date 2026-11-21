@@ -19,9 +19,13 @@ public class WeightRecord
     public string? MaterialCodeSnapshot { get; set; }
     public string? MaterialNameSnapshot { get; set; }
 
-    // —— 作废留痕：回称时记录作废时间与操作人 ——
+    // —— 作废留痕：回称时记录作废时间、操作人与原因 ——
     public DateTime? VoidedAt { get; set; }
     public string? VoidedBy { get; set; }
+    public string? VoidReason { get; set; }
+
+    /// <summary>原料码的来源，取值见 <see cref="Hardware.ScanSources"/>；旧记录为空。</summary>
+    public string? ScanSource { get; set; }
 
     public WorkOrder WorkOrder { get; set; } = null!;
     public FormulaItem FormulaItem { get; set; } = null!;

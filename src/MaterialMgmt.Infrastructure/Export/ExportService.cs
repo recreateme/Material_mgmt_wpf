@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
+using MaterialMgmt.Core.Hardware;
 using MaterialMgmt.Core.Orders;
 using MaterialMgmt.Infrastructure.Data;
 
@@ -114,7 +115,8 @@ public sealed class ExportService
         ws.Cell(row, 6).Value = "实际(g)";
         ws.Cell(row, 7).Value = "扫码";
         ws.Cell(row, 8).Value = "时间";
-        for (var c = 1; c <= 8; c++)
+        ws.Cell(row, 9).Value = "扫码来源";
+        for (var c = 1; c <= 9; c++)
         {
             ws.Cell(row, c).Style.Font.Bold = true;
             ws.Cell(row, c).Style.Fill.BackgroundColor = XLColor.FromHtml("#2563EB");
@@ -138,6 +140,7 @@ public sealed class ExportService
                 ws.Cell(row, 6).Style.Font.FontColor = XLColor.FromHtml("#CC0000");
             ws.Cell(row, 7).Value = r.BarcodeScanned;
             ws.Cell(row, 8).Value = r.Timestamp.ToString("yyyy-MM-dd HH:mm:ss");
+            ws.Cell(row, 9).Value = ScanSources.ToDisplay(r.ScanSource);
             row++;
         }
 

@@ -21,6 +21,9 @@
 # Local machine config (use config/settings.example.ini as template)
 /config/settings.ini
 
+# 交付单等含密码的本地文档（发布脚本会附带 docs/local/初始账号.md）
+/docs/local/
+
 # Python tools (optional dev scripts)
 **/__pycache__/
 *.pyc

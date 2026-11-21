@@ -1,6 +1,6 @@
 ﻿# 原料管理系统 WPF — 完整打包脚本
 # 产物目录：dist\原料管理系统\
-# 压缩包：  dist\原料管理系统-v4.2.2-win-x64.zip
+# 压缩包：  dist\原料管理系统-v4.2.3-win-x64.zip
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
@@ -8,7 +8,7 @@ if (-not (Test-Path (Join-Path $Root "src\MaterialMgmt.sln"))) {
     throw "未找到解决方案，请在仓库根目录执行（含 src\MaterialMgmt.sln）"
 }
 
-$Version = "4.2.2"
+$Version = "4.2.3"
 $Proj    = Join-Path $Root "src\MaterialMgmt.App\MaterialMgmt.App.csproj"
 $Out     = Join-Path $Root "dist\原料管理系统"
 $Zip     = Join-Path $Root "dist\原料管理系统-v$Version-win-x64.zip"
@@ -93,6 +93,7 @@ if (Test-Path -LiteralPath $bakIni) {
 port = 
 baud_rate = 9600
 auto_connect = true
+raw_frame_log = false
 
 [scanner]
 port = 
@@ -162,9 +163,10 @@ $readme = @"
   logs\                运行日志 / 审计日志
   docs\                部署与联调说明
 
-【默认账号】（仅空库首次启动写入）
-  admin / 88888888       系统管理员（账号维护 + 设置）
-  operator / operator123 业务人员（原料/配方/称量/工单）
+【初始账号】（仅空库首次启动写入）
+  admin      系统管理员（账号维护 + 设置）
+  operator   业务人员（原料/配方/称量/工单）
+  初始密码见随包的「初始账号.txt」交付单；首次登录会强制修改密码。
 
 【角色说明】
   登录无需选手动身份；系统管理员管账号，业务人员管主数据与称量窗。
@@ -182,6 +184,15 @@ $readme = @"
 打包时间：$(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 "@
 $readme | Set-Content -Path (Join-Path $Out "使用说明.txt") -Encoding UTF8
+
+# 初始账号交付单：只存在于本机 docs\local\（已 gitignore），有则随包附带
+$accounts = Join-Path $Root "docs\local\初始账号.md"
+if (Test-Path -LiteralPath $accounts) {
+    Copy-Item -LiteralPath $accounts -Destination (Join-Path $Out "初始账号.txt") -Force
+    Write-Host "  已附带初始账号交付单"
+} else {
+    Write-Host "  提示：未找到 docs\local\初始账号.md，发布包中不含初始密码说明"
+}
 
 # 5) 压缩包
 Write-Host "[5/5] 生成 zip ..."

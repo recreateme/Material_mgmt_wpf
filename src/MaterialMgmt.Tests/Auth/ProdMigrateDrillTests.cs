@@ -73,6 +73,61 @@ public class ProdMigrateDrillTests
         Assert.True(bakInfo.IsReadOnly || bakInfo.Length > 0);
     }
 
+    /// <summary>当前在用库（data/material_mgmt.db）的副本：启动补列后，账号、工单、称重记录数量不变，新列存在。</summary>
+    [Fact]
+    public async Task Current_db_copy_gains_new_columns_without_data_change()
+    {
+        var repoRoot = FindRepoRoot();
+        var source = Path.Combine(repoRoot, "data", "material_mgmt.db");
+        if (!File.Exists(source))
+            return; // 干净检出（CI）没有本地库，跳过
+
+        var drillRoot = Path.Combine(repoRoot, "data", "_migrate_drill_current");
+        if (Directory.Exists(drillRoot))
+            Directory.Delete(drillRoot, recursive: true);
+        Directory.CreateDirectory(Path.Combine(drillRoot, "data"));
+        var drillDb = Path.Combine(drillRoot, "data", "material_mgmt.db");
+        await using (var src = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={source};Mode=ReadOnly;Pooling=False"))
+        {
+            await src.OpenAsync();
+            await using var cmd = src.CreateCommand();
+            cmd.CommandText = $"VACUUM INTO '{drillDb.Replace("'", "''")}'";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        (int Users, int Orders, int Records, int Valid) Count(MaterialMgmtDbContext c) => (
+            c.Users.Count(), c.WorkOrders.Count(), c.WeightRecords.Count(), c.WeightRecords.Count(r => r.IsValid));
+
+        (int, int, int, int) before;
+        var opts = new DbContextOptionsBuilder<MaterialMgmtDbContext>().UseSqlite($"Data Source={drillDb};Pooling=False").Options;
+        await using (var pre = new MaterialMgmtDbContext(opts))
+        {
+            var conn = pre.Database.GetDbConnection();
+            await conn.OpenAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*), (SELECT COUNT(*) FROM work_orders), (SELECT COUNT(*) FROM weight_records), " +
+                              "(SELECT COUNT(*) FROM weight_records WHERE is_valid = 1) FROM users";
+            await using var r = await cmd.ExecuteReaderAsync();
+            await r.ReadAsync();
+            before = (r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), r.GetInt32(3));
+        }
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddMaterialMgmtInfrastructure(drillRoot);
+        await using var sp = services.BuildServiceProvider();
+        var boot = sp.GetRequiredService<DbBootstrap>();
+        await boot.InitializeAsync();
+        Assert.True(boot.ValidIndexReady);
+
+        await using var db = await sp.GetRequiredService<IDbContextFactory<MaterialMgmtDbContext>>().CreateDbContextAsync();
+        Assert.Equal(before, Count(db));
+        // 新列可读（旧记录为空）
+        Assert.True(await db.WeightRecords.CountAsync(r => r.ScanSource == null && r.VoidReason == null) >= 0);
+        await boot.ShutdownAsync();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+    }
+
     private static string FindRepoRoot()
     {
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
