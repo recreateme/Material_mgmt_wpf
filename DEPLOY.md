@@ -108,6 +108,6 @@ powershell -ExecutionPolicy Bypass -File .\tools\publish.ps1
 业务人员登录后，主窗侧栏或首页点「打开称量窗」；称量在独立窗口进行。
 
 **Q：配方添加步骤点不了保存？**  
-请使用 v4.2+；上下限须大于 0。调整顺序后点「保存顺序」或「完成」。长弹窗底栏应固定可见。
+请使用 v4.2+；上下限须大于 0。上移 / 下移即时保存。长弹窗底栏应固定可见。
 
 更多硬件联调见 [docs/hardware-checklist.md](docs/hardware-checklist.md)、[docs/TECH.md](docs/TECH.md)。

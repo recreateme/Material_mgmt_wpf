@@ -51,14 +51,38 @@ public static class GridKit
         factory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
         factory.SetValue(FrameworkElement.CursorProperty, System.Windows.Input.Cursors.Hand);
 
+        var header = new CheckBox
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "全选 / 取消全选当前页"
+        };
+        header.Click += (_, _) =>
+        {
+            if (FindAncestor<DataGrid>(header) is not { } grid) return;
+            var rows = grid.Items.OfType<ISelectable>().ToList();
+            SetAll(grid, !(rows.Count > 0 && rows.All(r => r.IsSelected)));
+        };
+
         return new DataGridTemplateColumn
         {
-            Header = "选择",
+            Header = header,
             Width = 58,
             CanUserResize = false,
             CanUserSort = false,
             CellTemplate = new DataTemplate { VisualTree = factory }
         };
+    }
+
+    /// <summary>表头勾选框：全选为勾、部分为横线、全不选为空。</summary>
+    private static void RefreshHeader(DataGrid grid)
+    {
+        var header = grid.Columns.Select(c => c.Header).OfType<CheckBox>().FirstOrDefault();
+        if (header is null) return;
+        var rows = grid.Items.OfType<ISelectable>().ToList();
+        var n = rows.Count(r => r.IsSelected);
+        header.IsChecked = n == 0 ? false : n == rows.Count ? true : null;
+        header.IsEnabled = rows.Count > 0;
     }
 
     public static Style CenteredTextStyle { get; } = CreateCenteredTextStyle();
@@ -159,17 +183,38 @@ public static class GridKit
             state.Syncing = false;
         }
 
+        Notify(grid, state);
+    }
+
+    private static void Notify(DataGrid grid, LinkState state)
+    {
+        RefreshHeader(grid);
         state.OnSelectionChanged?.Invoke();
     }
 
-    public static void AddSelectButtons(Panel bar, DataGrid grid)
+    /// <summary>切换一行的勾选并同步高亮集，不影响其它已选行（勾选框单击、空格键共用）。</summary>
+    private static void ToggleRow(DataGrid grid, LinkState state, object rowObj)
     {
-        var all = UiTheme.GhostButton("全选");
-        all.Click += (_, _) => SetAll(grid, true);
-        var none = UiTheme.GhostButton("取消全选");
-        none.Click += (_, _) => SetAll(grid, false);
-        bar.Children.Add(all);
-        bar.Children.Add(none);
+        if (rowObj is not ISelectable sel) return;
+        state.Syncing = true;
+        try
+        {
+            sel.IsSelected = !sel.IsSelected;
+            if (sel.IsSelected)
+            {
+                if (!grid.SelectedItems.Contains(rowObj))
+                    grid.SelectedItems.Add(rowObj);
+            }
+            else
+            {
+                grid.SelectedItems.Remove(rowObj);
+            }
+        }
+        finally
+        {
+            state.Syncing = false;
+        }
+        Notify(grid, state);
     }
 
     /// <summary>
@@ -201,44 +246,42 @@ public static class GridKit
                 state.Syncing = false;
             }
 
-            state.OnSelectionChanged?.Invoke();
+            Notify(grid, state);
         };
 
-        // 点勾选框：自行切换勾选与 SelectedItems，阻止 DataGrid 把它当成「只选这一行」
+        // 点行内勾选框：自行切换勾选与 SelectedItems，阻止 DataGrid 把它当成「只选这一行」。表头勾选框走它自己的 Click。
         grid.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler((_, e) =>
         {
             if (FindAncestor<CheckBox>(e.OriginalSource as DependencyObject) is not { } cb)
+                return;
+            if (FindAncestor<DataGridRow>(cb) is null)
                 return;
             if (FindRowItem(cb, grid) is not { } rowObj)
                 return;
 
             e.Handled = true;
             cb.Focus();
-
-            state.Syncing = true;
-            try
-            {
-                if (rowObj is ISelectable sel)
-                {
-                    sel.IsSelected = !sel.IsSelected;
-                    if (sel.IsSelected)
-                    {
-                        if (!grid.SelectedItems.Contains(rowObj))
-                            grid.SelectedItems.Add(rowObj);
-                    }
-                    else
-                    {
-                        grid.SelectedItems.Remove(rowObj);
-                    }
-                }
-            }
-            finally
-            {
-                state.Syncing = false;
-            }
-
-            state.OnSelectionChanged?.Invoke();
+            ToggleRow(grid, state, rowObj);
         }), handledEventsToo: true);
+
+        // 空格键：切换当前行勾选（否则勾选框自己切换，高亮集不同步）
+        grid.PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Space) return;
+            if (Keyboard.FocusedElement is DependencyObject focused && FindAncestor<TextBox>(focused) is not null)
+                return;
+            var rowObj = (Keyboard.FocusedElement as DependencyObject) is { } f && FindAncestor<DataGridRow>(f) is { } r
+                ? r.Item
+                : grid.CurrentItem ?? grid.SelectedItem;
+            if (rowObj is null || rowObj == CollectionView.NewItemPlaceholder) return;
+            e.Handled = true;
+            ToggleRow(grid, state, rowObj);
+        };
+
+        // 翻页 / 刷新换了数据源：表头状态跟着重算
+        var itemsSource = System.ComponentModel.DependencyPropertyDescriptor
+            .FromProperty(ItemsControl.ItemsSourceProperty, typeof(DataGrid));
+        itemsSource.AddValueChanged(grid, (_, _) => RefreshHeader(grid));
     }
 
     /// <summary>多选时禁用单条入口；恰 1 条时启用。</summary>

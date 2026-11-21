@@ -45,14 +45,20 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         Foreground = UiTheme.Brush(UiTheme.Text),
         TextWrapping = TextWrapping.Wrap
     };
+    private readonly TextBlock _orderStatus = new()
+    {
+        Foreground = UiTheme.Brush(UiTheme.Success),
+        FontSize = UiTheme.FontCaption,
+        VerticalAlignment = VerticalAlignment.Center,
+        Margin = new Thickness(4, 0, 0, 0)
+    };
+    private readonly EmptyState _empty;
     private bool _locked;
     private int _formulaId;
     private string _formulaCode = "";
     private List<FormulaItem> _items = new();
     private List<Material> _materials = new();
-    private bool _orderDirty;
-    private bool _stepDialogOpen;
-    private ComboBox? _stepMaterialCombo;
+    private FormulaStepDialog? _stepDialog;
     /// <summary>添加步骤时插入到该步骤之后；null 表示追加到末尾。</summary>
     private int? _addAfterItemId;
 
@@ -64,13 +70,14 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         _audit = audit;
         _nav = nav;
         _orders = orders;
+        _empty = new EmptyState("该配方还没有称量步骤", "添加步骤", () => EditStep(null));
         Build();
     }
 
     public void Load(int formulaId)
     {
         _formulaId = formulaId;
-        _orderDirty = false;
+        _orderStatus.Text = "";
         Reload();
     }
 
@@ -81,18 +88,10 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
 
     public void OnBarcode(string code, bool simulated = false)
     {
-        if (!_stepDialogOpen || _stepMaterialCombo is null) return;
+        if (_stepDialog is null) return;
         var normalized = DeviceHub.NormalizeCode(code);
         if (string.IsNullOrEmpty(normalized)) return;
-        if (_stepMaterialCombo.ItemsSource is not IEnumerable<MaterialOption> options) return;
-        var match = options.FirstOrDefault(o =>
-            string.Equals(o.Code, normalized, StringComparison.OrdinalIgnoreCase));
-        if (match is null)
-        {
-            MessageBox.Show($"未找到原材料：{normalized}", "扫码");
-            return;
-        }
-        _stepMaterialCombo.SelectedItem = match;
+        _stepDialog.TrySelectMaterial(normalized);
     }
 
     private void Build()
@@ -120,24 +119,21 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         var del = UiTheme.DangerButton("删除步骤");
         del.Click += (_, _) => DeleteStep();
         _stepActions.Children.Add(del);
-        var saveOrder = UiTheme.GhostButton("保存顺序");
-        saveOrder.Click += (_, _) => SaveOrder();
-        _stepActions.Children.Add(saveOrder);
         ToolTipService.SetShowOnDisabled(_stepActions, true);
         bar.Children.Add(_stepActions);
         var finish = UiTheme.PrimaryButton("完成");
         finish.Click += (_, _) => Complete();
         bar.Children.Add(finish);
-        GridKit.AddSelectButtons(bar, _grid);
+        bar.Children.Add(_orderStatus);
 
         header.Children.Add(bar);
         _lockBanner.Child = _lockText;
         header.Children.Add(_lockBanner);
         header.Children.Add(new TextBlock
         {
-            Text = "请添加称量步骤并设置大于 0 的上下限。可扫码选料。" +
+            Text = "请添加称量步骤并设置大于 0 的上下限（单位 g），可扫码选料。" +
                    "选中某一步后再点「添加步骤」会插入到该步之后；未选中则追加到末尾。" +
-                   "步骤较多时可滚动浏览（不分页）。调整顺序后点「保存顺序」或「完成」。",
+                   "上移 / 下移后顺序立即保存。步骤较多时可滚动浏览（不分页）。",
             Foreground = UiTheme.Brush(UiTheme.Muted),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 8, 0, 0)
@@ -162,7 +158,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         };
 
         root.Children.Add(header);
-        root.Children.Add(_grid);
+        root.Children.Add(EmptyState.Host(_grid, _empty));
         Content = root;
     }
 
@@ -178,8 +174,9 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         _materials = db.Materials.OrderBy(m => m.Code).ToList();
         _items = f.Items.OrderBy(i => i.Sequence).ToList();
         _grid.ItemsSource = GridKit.Wrap(_items);
-        _orderDirty = false;
         RefreshLock();
+        _empty.Update(_items.Count, filtered: false);
+        _empty.ActionEnabled = !_locked;
 
         if (selectItemId is int sid)
         {
@@ -235,14 +232,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
 
     private void GoBack()
     {
-        if (_orderDirty)
-        {
-            var r = MessageBox.Show("步骤顺序尚未保存。是否保存后返回？", "确认",
-                MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-            if (r == MessageBoxResult.Cancel) return;
-            if (r == MessageBoxResult.Yes && !SaveOrder(silent: true)) return;
-        }
-        else if (_items.Count == 0)
+        if (_items.Count == 0)
         {
             if (!ConfirmDialog.Ask("该配方尚无称量步骤，确定返回列表？", "确认", "确定"))
                 return;
@@ -253,99 +243,48 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
     private void EditStep(FormulaItem? existing)
     {
         if (!EnsureEditable()) return;
-        if (_materials.Count == 0) { MessageBox.Show("请先创建原材料"); return; }
+        if (_materials.Count == 0) { UiFeedback.Warn("请先在「原材料」页创建原材料。"); return; }
 
-        // 新增：记住当前光标行，保存时插到其后；无选中则追加末尾
+        // 新增：记住当前光标行，保存时插到其后；无选中则追加末尾。连续添加时每次后移到新步骤之后。
         _addAfterItemId = existing is null ? CurrentStep()?.Id : null;
-
-        var options = _materials.Select(m => new MaterialOption(m)).ToList();
-        var mat = new ComboBox
-        {
-            Margin = new Thickness(0, 0, 0, 10),
-            ItemsSource = options,
-            DisplayMemberPath = nameof(MaterialOption.Display)
-        };
-        mat.SelectedItem = existing is null
-            ? options[0]
-            : options.FirstOrDefault(o => o.Id == existing.MaterialId) ?? options[0];
-
-        var min = new TextBox
-        {
-            Text = existing is null ? "" : existing.WeightMin.ToString("F3"),
-            Margin = new Thickness(0, 0, 0, 10)
-        };
-        var max = new TextBox
-        {
-            Text = existing is null ? "" : existing.WeightMax.ToString("F3"),
-            Margin = new Thickness(0, 0, 0, 10)
-        };
-        var notes = new TextBox { Text = existing?.Notes ?? "", Margin = new Thickness(0, 0, 0, 10) };
-
-        var dlg = new Window
-        {
-            Title = existing is null ? "添加步骤" : "编辑步骤",
-            Width = 440,
-            MinHeight = 420,
-            MaxHeight = 640,
-            SizeToContent = SizeToContent.Height,
-            Owner = Window.GetWindow(this),
-            WindowStartupLocation = WindowStartupLocation.CenterOwner
-        };
-
-        var form = new StackPanel { Margin = new Thickness(20, 16, 20, 8) };
-        form.Children.Add(UiTheme.FieldLabel("原材料（可扫码）"));
-        form.Children.Add(mat);
-        form.Children.Add(UiTheme.Hint("下拉选择，或扫描原料条码自动选中"));
-        if (existing is null)
-        {
-            form.Children.Add(UiTheme.Hint(_addAfterItemId is null
-                ? "未选中步骤：将追加到列表末尾"
-                : "已选中步骤：将插入到该步骤之后"));
-        }
-        form.Children.Add(UiTheme.FieldLabel("下限 (g) *"));
-        form.Children.Add(min);
-        form.Children.Add(UiTheme.FieldLabel("上限 (g) *"));
-        form.Children.Add(max);
-        form.Children.Add(UiTheme.FieldLabel("备注"));
-        form.Children.Add(notes);
-
-        var cancel = UiTheme.GhostButton("取消");
-        cancel.Click += (_, _) => { dlg.DialogResult = false; dlg.Close(); };
-        var ok = UiTheme.PrimaryButton("保存");
-        ok.Margin = new Thickness(0);
-        ok.Click += (_, _) => SaveStep(dlg, existing, mat, min, max, notes);
-        dlg.Content = UiTheme.DialogBody(form, UiTheme.DialogFooterButtons(cancel, ok));
-
-        _stepMaterialCombo = mat;
-        _stepDialogOpen = true;
-        try { dlg.ShowDialog(); }
+        var options = _materials.Select(StepMaterialOption.From).ToList();
+        _stepDialog = new FormulaStepDialog(options, existing, DescribeInsertPosition,
+            input => SaveStep(existing, input));
+        try { _stepDialog.ShowDialog(); }
         finally
         {
-            _stepDialogOpen = false;
-            _stepMaterialCombo = null;
+            var added = _stepDialog.AddedCount;
+            _stepDialog = null;
             _addAfterItemId = null;
+            if (added > 0)
+                UiFeedback.Success(existing is not null ? "步骤已保存。" : added == 1 ? "步骤已添加。" : $"已添加 {added} 个步骤。");
         }
     }
 
-    private void SaveStep(Window dlg, FormulaItem? existing, ComboBox mat, TextBox min, TextBox max, TextBox notes)
+    private string DescribeInsertPosition()
     {
-        if (mat.SelectedItem is not MaterialOption pick)
+        if (_addAfterItemId is int id && _items.FirstOrDefault(x => x.Id == id) is { } after)
+            return $"将插入到第 {after.Sequence} 步（{after.Material?.Name}）之后。";
+        return "将追加到列表末尾。";
+    }
+
+    /// <summary>写库；成功返回 null，失败返回错误说明（显示在步骤对话框里）。</summary>
+    private string? SaveStep(FormulaItem? existing, StepInput input)
+    {
+        try
         {
-            MessageBox.Show(dlg, "请选择原材料", "提示");
-            return;
+            _orders.EnsureFormulaStepsEditable(_formulaId);
         }
-        if (!double.TryParse(min.Text, out var wmin) || !double.TryParse(max.Text, out var wmax)
-            || wmin <= 0 || wmax <= 0 || wmin > wmax)
+        catch (InvalidOperationException ex)
         {
-            MessageBox.Show(dlg, "请输入大于 0 的上下限（下限 ≤ 上限）", "提示");
-            return;
+            RefreshLock();
+            return ex.Message;
         }
-        if (!EnsureEditable(dlg)) return;
 
         try
         {
             using var db = _dbFactory.CreateDbContext();
-            int? focusId = existing?.Id;
+            int focusId;
             if (existing is null)
             {
                 var ordered = db.FormulaItems
@@ -362,11 +301,11 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
                 var entity = new FormulaItem
                 {
                     FormulaId = _formulaId,
-                    MaterialId = pick.Id,
+                    MaterialId = input.MaterialId,
                     Sequence = FormulaSequence.TempOffset + ordered.Count + 1,
-                    WeightMin = wmin,
-                    WeightMax = wmax,
-                    Notes = string.IsNullOrWhiteSpace(notes.Text) ? null : notes.Text.Trim()
+                    WeightMin = input.Min,
+                    WeightMax = input.Max,
+                    Notes = input.Notes
                 };
                 db.FormulaItems.Add(entity);
                 db.SaveChanges();
@@ -375,51 +314,58 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
                 var ids = ordered.Select(x => x.Id).ToList();
                 ids.Insert(insertIndex, entity.Id);
                 ApplySequencePhases(db, ids);
+                _addAfterItemId = entity.Id;
             }
             else
             {
                 var e = db.FormulaItems.First(i => i.Id == existing.Id);
-                e.MaterialId = pick.Id;
-                e.WeightMin = wmin;
-                e.WeightMax = wmax;
-                e.Notes = string.IsNullOrWhiteSpace(notes.Text) ? null : notes.Text.Trim();
+                e.MaterialId = input.MaterialId;
+                e.WeightMin = input.Min;
+                e.WeightMax = input.Max;
+                e.Notes = input.Notes;
                 db.SaveChanges();
+                focusId = e.Id;
             }
 
             _audit.Log("formula", $"编辑配方步骤 formulaId={_formulaId}", _auth.CurrentUser?.Username ?? "");
-            dlg.DialogResult = true;
-            dlg.Close();
             Reload(focusId);
-            UiFeedback.Success(existing is null ? "步骤已添加。" : "步骤已保存。");
+            return null;
         }
         catch (Exception ex)
         {
-            MessageBox.Show(dlg, ex.Message, "保存失败", MessageBoxButton.OK, MessageBoxImage.Error);
+            return $"保存失败：{ex.GetBaseException().Message}";
         }
     }
 
+    /// <summary>上移 / 下移后立即写库，不再需要“保存顺序”。</summary>
     private void Move(int dir)
     {
         if (_locked) return;
         if (CurrentStep() is not { } it)
         {
-            MessageBox.Show("请先选择一个步骤", "提示");
+            UiFeedback.Warn("请先选择一个步骤。");
             return;
         }
         var idx = _items.FindIndex(x => x.Id == it.Id);
         var target = idx + dir;
         if (target < 0 || target >= _items.Count) return;
-        (_items[idx], _items[target]) = (_items[target], _items[idx]);
-        for (var i = 0; i < _items.Count; i++) _items[i].Sequence = i + 1;
-        _grid.ItemsSource = GridKit.Wrap(_items);
-        var row = _grid.Items.OfType<SelectableRow<FormulaItem>>()
-            .FirstOrDefault(r => r.Item.Id == _items[target].Id);
-        if (row != null)
+        if (!EnsureEditable()) return;
+
+        var ids = _items.Select(x => x.Id).ToList();
+        (ids[idx], ids[target]) = (ids[target], ids[idx]);
+        try
         {
-            _grid.SelectedItem = row;
-            _grid.ScrollIntoView(row);
+            using var db = _dbFactory.CreateDbContext();
+            ApplySequencePhases(db, ids);
         }
-        _orderDirty = true;
+        catch (Exception ex)
+        {
+            UiFeedback.Warn($"调整顺序失败：{ex.GetBaseException().Message}");
+            Reload(it.Id);
+            return;
+        }
+        Reload(it.Id);
+        _orderStatus.Text = $"✓ 顺序已保存 {DateTime.Now:HH:mm:ss}";
     }
 
     private void DeleteStep()
@@ -429,7 +375,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
             selected = new List<FormulaItem> { one };
         if (selected.Count == 0)
         {
-            MessageBox.Show("请先勾选或选中要删除的步骤", "提示");
+            UiFeedback.Warn("请先勾选或选中要删除的步骤。");
             return;
         }
 
@@ -482,27 +428,6 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         UiFeedback.Success(selected.Count == 1 ? "步骤已删除。" : $"已删除 {selected.Count} 个步骤。");
     }
 
-    private bool SaveOrder(bool silent = false)
-    {
-        if (_items.Count == 0) return true;
-        if (!EnsureEditable()) return false;
-        try
-        {
-            var ids = _items.Select(x => x.Id).ToList();
-            using var db = _dbFactory.CreateDbContext();
-            ApplySequencePhases(db, ids);
-            Reload();
-            if (!silent)
-                UiFeedback.Success("步骤顺序已保存。");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"保存顺序失败：{ex.Message}", "失败", MessageBoxButton.OK, MessageBoxImage.Error);
-            return false;
-        }
-    }
-
     private static void ApplySequencePhases(MaterialMgmtDbContext db, IReadOnlyList<int> orderedIds)
     {
         var phases = FormulaSequence.BuildTwoPhase(orderedIds);
@@ -522,22 +447,8 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
             return;
         }
 
-        if (_orderDirty && !SaveOrder(silent: true)) return;
         _audit.Log("formula", $"完成配方编辑 {_formulaCode}", _auth.CurrentUser?.Username ?? "");
         UiFeedback.Success($"配方 {_formulaCode} 已保存，共 {_items.Count} 个步骤。", "配方编辑完成");
         _nav.Navigate(AppPage.Formulas);
-    }
-
-    private sealed class MaterialOption
-    {
-        public MaterialOption(Material m)
-        {
-            Id = m.Id;
-            Code = m.Code;
-            Display = $"{m.Code}  {m.Name}";
-        }
-        public int Id { get; }
-        public string Code { get; }
-        public string Display { get; }
     }
 }

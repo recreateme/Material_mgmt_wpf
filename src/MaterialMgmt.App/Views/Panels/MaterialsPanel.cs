@@ -4,7 +4,6 @@ using MaterialMgmt.App.Controls;
 using MaterialMgmt.App.Services;
 using MaterialMgmt.App.Themes;
 using MaterialMgmt.Core.Abstractions;
-using MaterialMgmt.Core.Codes;
 using MaterialMgmt.Core.Entities;
 using MaterialMgmt.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -19,19 +18,22 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
     private readonly IAuditLog _audit;
     private readonly DeviceHub _devices;
     private readonly DataGrid _grid = new();
-    private readonly TextBox _filter = new() { Width = 220, Height = 30, Margin = new Thickness(0, 0, 8, 0) };
-    private readonly PaginationBar _pager = new(10);
+    private readonly TextBox _filter = new();
+    private readonly PaginationBar _pager;
+    private readonly EmptyState _empty;
     private List<Material> _all = new();
     private List<Material> _filtered = new();
     private bool _editDialogOpen;
 
     public MaterialsPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth, IAuditLog audit,
-        DeviceHub devices)
+        DeviceHub devices, IConfigService config)
     {
         _dbFactory = dbFactory;
         _auth = auth;
         _audit = audit;
         _devices = devices;
+        _pager = new PaginationBar(config, "materials");
+        _empty = new EmptyState("暂无原材料", "新增原材料", () => Edit(null)) { ClearFilter = () => _filter.Text = "" };
         Build();
     }
 
@@ -46,25 +48,15 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
     private void Build()
     {
         var root = new DockPanel { Margin = new Thickness(20) };
-        var toolbar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
-        DockPanel.SetDock(toolbar, Dock.Top);
-
-        toolbar.Children.Add(new TextBlock
-        {
-            Text = "原材料", FontSize = 20, FontWeight = FontWeights.Bold,
-            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 16, 0)
-        });
-        toolbar.Children.Add(_filter);
+        var header = new PageHeader("原材料");
+        DockPanel.SetDock(header, Dock.Top);
+        header.AddSearch(_filter, "搜索编码或名称，可扫码");
         _filter.TextChanged += (_, _) => { _pager.Reset(); ApplyFilter(); };
 
-        var addBtn = UiTheme.PrimaryButton("新增");
+        var addBtn = header.AddAction(UiTheme.PrimaryButton("新增"));
         addBtn.Click += (_, _) => Edit(null);
-        toolbar.Children.Add(addBtn);
-
-        var delBtn = UiTheme.DangerButton("删除选中");
+        var delBtn = header.AddAction(UiTheme.DangerButton("删除选中"));
         delBtn.Click += (_, _) => DeleteSelected();
-        toolbar.Children.Add(delBtn);
-        GridKit.AddSelectButtons(toolbar, _grid);
 
         _grid.AutoGenerateColumns = false;
         _grid.IsReadOnly = true;
@@ -84,9 +76,9 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
         _pager.PageChanged += ApplyFilter;
         DockPanel.SetDock(_pager, Dock.Bottom);
 
-        root.Children.Add(toolbar);
+        root.Children.Add(header);
         root.Children.Add(_pager);
-        root.Children.Add(_grid);
+        root.Children.Add(EmptyState.Host(_grid, _empty));
         Content = root;
     }
 
@@ -106,6 +98,7 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
                 m.Code.Contains(q, StringComparison.OrdinalIgnoreCase) ||
                 m.Name.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
         _grid.ItemsSource = GridKit.Wrap(_pager.Apply(_filtered));
+        _empty.Update(_filtered.Count, filtered: q.Length > 0);
     }
 
     private void Edit(Material? existing)
@@ -119,6 +112,7 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
                 _audit.Log("material", existing is null ? $"新增材料 {dlg.SavedCode}" : $"编辑材料 {dlg.SavedCode}",
                     _auth.CurrentUser?.Username ?? "");
                 Refresh();
+                UiFeedback.Success(existing is null ? $"已新增原材料 {dlg.SavedCode}。" : "已保存。");
             }
         }
         finally
@@ -134,7 +128,7 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
             selected = new List<Material> { one };
         if (selected.Count == 0)
         {
-            MessageBox.Show("请先勾选要删除的材料", "提示");
+            UiFeedback.Warn("请先勾选要删除的材料。");
             return;
         }
         if (!ConfirmDialog.Ask($"确认删除 {selected.Count} 条原材料？", "确认删除", "删除", danger: true))
@@ -161,138 +155,5 @@ public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandle
         db.SaveChanges();
         UiFeedback.Success($"已删除 {selected.Count} 条原材料。");
         Refresh();
-    }
-}
-
-internal sealed class MaterialEditDialog : Window
-{
-    private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;
-    private readonly Material? _existing;
-    private readonly TextBox _name = new() { Height = 30, Margin = new Thickness(0, 4, 0, 10) };
-    private readonly TextBox _desc = new() { Height = 30, Margin = new Thickness(0, 4, 0, 10) };
-    private readonly CheckBox _manual = new() { Content = "手工指定编码", Margin = new Thickness(0, 0, 0, 6) };
-    private readonly TextBox _code = new() { Height = 30, Margin = new Thickness(0, 4, 0, 10), IsEnabled = false };
-    public string SavedCode { get; private set; } = "";
-
-    public MaterialEditDialog(IDbContextFactory<MaterialMgmtDbContext> dbFactory, DeviceHub devices, Material? existing)
-    {
-        _dbFactory = dbFactory;
-        _existing = existing;
-        Title = existing is null ? "新增原材料" : "编辑原材料";
-        Width = 420;
-        MinHeight = 280;
-        MaxHeight = 520;
-        SizeToContent = SizeToContent.Height;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        ResizeMode = ResizeMode.NoResize;
-
-        using (var db = _dbFactory.CreateDbContext())
-        {
-            var last = db.Materials.OrderByDescending(m => m.Id).Select(m => (int?)m.Id).FirstOrDefault();
-            _code.Text = existing?.Code ?? CodeService.PreviewNext(CodeKind.Material, last);
-        }
-
-        if (existing is not null)
-        {
-            _name.Text = existing.Name;
-            _desc.Text = existing.Description ?? "";
-            _code.Text = existing.Code;
-        }
-
-        _manual.Checked += (_, _) => _code.IsEnabled = true;
-        _manual.Unchecked += (_, _) =>
-        {
-            _code.IsEnabled = false;
-            using var db = _dbFactory.CreateDbContext();
-            var last = db.Materials.OrderByDescending(m => m.Id).Select(m => (int?)m.Id).FirstOrDefault();
-            if (_existing is null) _code.Text = CodeService.PreviewNext(CodeKind.Material, last);
-        };
-
-        var stack = new StackPanel { Margin = new Thickness(20, 16, 20, 8) };
-        stack.Children.Add(new TextBlock { Text = "名称 *" });
-        stack.Children.Add(_name);
-        stack.Children.Add(new TextBlock { Text = "描述" });
-        stack.Children.Add(_desc);
-        stack.Children.Add(_manual);
-        stack.Children.Add(new TextBlock { Text = "编码（可扫码填入）" });
-        stack.Children.Add(_code);
-        var save = UiTheme.PrimaryButton("保存");
-        save.Margin = new Thickness(0);
-        save.Click += (_, _) => Save();
-        Content = UiTheme.DialogBody(stack, UiTheme.DialogFooterButtons(save));
-
-        BarcodeFillHelper.AttachDialog(this, devices, _manual, _code);
-    }
-
-    private void Save()
-    {
-        if (string.IsNullOrWhiteSpace(_name.Text))
-        {
-            MessageBox.Show(this, "请填写名称", "提示");
-            return;
-        }
-
-        try
-        {
-            using var db = _dbFactory.CreateDbContext();
-            Material entity;
-            if (_existing is null)
-            {
-                var code = ResolveCreateCode(db);
-                entity = new Material
-                {
-                    Name = _name.Text.Trim(),
-                    Description = string.IsNullOrWhiteSpace(_desc.Text) ? null : _desc.Text.Trim(),
-                    CreatedAt = DateTime.Now,
-                    Code = code
-                };
-                db.Materials.Add(entity);
-            }
-            else
-            {
-                entity = db.Materials.First(m => m.Id == _existing.Id);
-                entity.Name = _name.Text.Trim();
-                entity.Description = string.IsNullOrWhiteSpace(_desc.Text) ? null : _desc.Text.Trim();
-                if (_manual.IsChecked == true)
-                {
-                    entity.Code = CodeService.AssertUnique(
-                        Array.Empty<string>(),
-                        _code.Text,
-                        entity.Id,
-                        db.Materials.Select(m => new ValueTuple<int, string>(m.Id, m.Code)).AsEnumerable());
-                }
-            }
-            db.SaveChanges();
-            SavedCode = entity.Code;
-            DialogResult = true;
-            Close();
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, ResolveErrorMessage(ex), "保存失败", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private string ResolveCreateCode(MaterialMgmtDbContext db)
-    {
-        if (_manual.IsChecked == true)
-        {
-            return CodeService.AssertUnique(
-                Array.Empty<string>(),
-                _code.Text,
-                null,
-                db.Materials.Select(m => new ValueTuple<int, string>(m.Id, m.Code)).AsEnumerable());
-        }
-
-        var nextId = (db.Materials.Select(m => (int?)m.Id).Max() ?? 0) + 1;
-        return CodeService.AssignAuto(CodeKind.Material, nextId,
-            (c, _) => !db.Materials.Any(m => m.Code == c));
-    }
-
-    private static string ResolveErrorMessage(Exception ex)
-    {
-        var e = ex;
-        while (e.InnerException is not null) e = e.InnerException;
-        return e.Message;
     }
 }

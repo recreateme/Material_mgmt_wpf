@@ -13,6 +13,7 @@ namespace MaterialMgmt.App.Views.Dialogs;
 public abstract class DialogWindow : Window
 {
     private readonly Dictionary<FrameworkElement, TextBlock> _errors = new();
+    private readonly StackPanel _footer;
 
     protected StackPanel Body { get; } = new() { Margin = new Thickness(24, 20, 24, 8) };
     protected Button ConfirmButton { get; }
@@ -45,8 +46,32 @@ public abstract class DialogWindow : Window
         }
         buttons.Add(ConfirmButton);
 
-        Content = UiTheme.DialogBody(Body, UiTheme.DialogFooterButtons(buttons.ToArray()));
+        _footer = UiTheme.DialogFooterButtons(buttons.ToArray());
+        Content = UiTheme.DialogBody(Body, _footer);
         Loaded += (_, _) => FocusFirstInput();
+    }
+
+    /// <summary>在确认按钮左侧再加一个按钮（如“保存并继续添加”“仅禁用”）。</summary>
+    protected Button AddFooterButton(Button button)
+    {
+        button.Margin = new Thickness(0, 0, 8, 0);
+        _footer.Children.Insert(_footer.Children.IndexOf(ConfirmButton), button);
+        return button;
+    }
+
+    /// <summary>内容较多的对话框（如工单详情）改为可调整大小的固定尺寸窗口。</summary>
+    protected void MakeResizable(double height, double minWidth, double minHeight)
+    {
+        SizeToContent = SizeToContent.Manual;
+        ResizeMode = ResizeMode.CanResize;
+        WindowSizing.Fit(this, Width, height, minWidth, minHeight);
+    }
+
+    /// <summary>以对话框结果关闭但不经过 <see cref="OnConfirm"/>（第三个按钮用）。</summary>
+    protected void CloseWith(bool? result)
+    {
+        DialogResult = result;
+        Close();
     }
 
     /// <summary>用户点击确认（或按 Enter）。校验失败调用 <see cref="ShowError"/>；成功调用 <see cref="Accept"/>。</summary>

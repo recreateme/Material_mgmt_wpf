@@ -81,6 +81,59 @@ public sealed class UserEditDialog : DialogWindow
     }
 }
 
+public enum LinkedUserAction { Cancel, DisableOnly, UnlinkAndDelete }
+
+/// <summary>要删除的账号仍关联工单时，选择“仅禁用”或“解除关联并删除”。</summary>
+public sealed class LinkedUserActionDialog : DialogWindow
+{
+    public LinkedUserAction Result { get; private set; } = LinkedUserAction.Cancel;
+
+    private LinkedUserActionDialog(IEnumerable<string> linkedLines, int freeCount)
+        : base("无法直接删除", 500, "解除关联并删除")
+    {
+        Body.Children.Add(new TextBlock
+        {
+            Text = "以下账号仍关联工单，直接删除会失败：",
+            FontWeight = FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+        var extra = freeCount > 0 ? $"\n另有 {freeCount} 个账号无工单。" : "";
+        Body.Children.Add(new TextBlock
+        {
+            Text = string.Join("\n", linkedLines) + extra,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 12)
+        });
+        Body.Children.Add(UiTheme.Hint(
+            "请选择处理方式：\n• 仅禁用：保留账号与工单，禁止登录\n• 解除关联并删除：工单保留（操作员姓名保留），账号删除"));
+
+        if (Application.Current?.TryFindResource("DangerButtonStyle") is Style danger)
+            ConfirmButton.Style = danger;
+        ConfirmButton.IsDefault = false;
+        var disable = AddFooterButton(UiTheme.GhostButton("仅禁用"));
+        disable.Click += (_, _) =>
+        {
+            Result = LinkedUserAction.DisableOnly;
+            CloseWith(true);
+        };
+        Loaded += (_, _) => (CancelButton ?? disable).Focus();
+    }
+
+    protected override void OnConfirm()
+    {
+        Result = LinkedUserAction.UnlinkAndDelete;
+        Accept();
+    }
+
+    public static LinkedUserAction Ask(IEnumerable<string> linkedLines, int freeCount)
+    {
+        var dlg = new LinkedUserActionDialog(linkedLines, freeCount);
+        dlg.ShowDialog();
+        return dlg.Result;
+    }
+}
+
 /// <summary>系统管理员重置业务人员密码。</summary>
 public sealed class ResetPasswordDialog : DialogWindow
 {

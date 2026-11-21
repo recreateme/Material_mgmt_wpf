@@ -18,12 +18,14 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
     private readonly IAuthService _auth;
     private readonly IAuditLog _audit;
     private readonly DataGrid _grid = new();
+    private readonly EmptyState _empty;
 
     public UserMgmtPanel(IDbContextFactory<MaterialMgmtDbContext> dbFactory, IAuthService auth, IAuditLog audit)
     {
         _dbFactory = dbFactory;
         _auth = auth;
         _audit = audit;
+        _empty = new EmptyState("还没有业务人员账号", "新增业务人员", () => Edit(null));
         Build();
     }
 
@@ -32,15 +34,13 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
     private void Build()
     {
         var root = new DockPanel { Margin = new Thickness(20) };
-        var bar = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
+        var bar = new PageHeader("业务人员账号", "业务人员可管理原料、配方并称量；系统管理员只维护账号与设置");
         DockPanel.SetDock(bar, Dock.Top);
-        bar.Children.Add(new TextBlock { Text = "业务人员账号", FontSize = 20, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 16, 0), VerticalAlignment = VerticalAlignment.Center });
-        var add = UiTheme.PrimaryButton("新增"); add.Click += (_, _) => Edit(null); bar.Children.Add(add);
-        var edit = UiTheme.PrimaryButton("编辑"); edit.Click += (_, _) => { if (CurrentRow() is { } r) Edit(r); }; bar.Children.Add(edit);
-        var reset = UiTheme.GhostButton("重置密码"); reset.Click += (_, _) => ResetPw(); bar.Children.Add(reset);
-        var toggle = UiTheme.GhostButton("启用/禁用"); toggle.Click += (_, _) => Toggle(); bar.Children.Add(toggle);
-        var del = UiTheme.DangerButton("删除"); del.Click += (_, _) => Delete(); bar.Children.Add(del);
-        GridKit.AddSelectButtons(bar, _grid);
+        var add = bar.AddAction(UiTheme.PrimaryButton("新增")); add.Click += (_, _) => Edit(null);
+        var edit = bar.AddAction(UiTheme.PrimaryButton("编辑")); edit.Click += (_, _) => { if (CurrentRow() is { } r) Edit(r); };
+        var reset = bar.AddAction(UiTheme.GhostButton("重置密码")); reset.Click += (_, _) => ResetPw();
+        var toggle = bar.AddAction(UiTheme.GhostButton("启用/禁用")); toggle.Click += (_, _) => Toggle();
+        var del = bar.AddAction(UiTheme.DangerButton("删除")); del.Click += (_, _) => Delete();
 
         _grid.AutoGenerateColumns = false; _grid.IsReadOnly = true;
         GridKit.BindSingleActions(_grid, edit, reset);
@@ -50,7 +50,7 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
         _grid.Columns.Add(GridKit.Text("显示名", "Item.DisplayName", 140));
         _grid.Columns.Add(GridKit.Text("角色", "Item.RoleDisplay", 110));
         _grid.Columns.Add(GridKit.Text("状态", "Item.ActiveDisplay", 90));
-        root.Children.Add(bar); root.Children.Add(_grid); Content = root;
+        root.Children.Add(bar); root.Children.Add(EmptyState.Host(_grid, _empty)); Content = root;
     }
 
     private IQueryable<User> Scope(MaterialMgmtDbContext db) =>
@@ -59,7 +59,9 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
     private void Refresh()
     {
         using var db = _dbFactory.CreateDbContext();
-        _grid.ItemsSource = GridKit.Wrap(Scope(db).OrderBy(u => u.Id).AsEnumerable().Select(u => new UserRow(u)));
+        var rows = GridKit.Wrap(Scope(db).OrderBy(u => u.Id).AsEnumerable().Select(u => new UserRow(u)));
+        _grid.ItemsSource = rows;
+        _empty.Update(rows.Count, filtered: false);
     }
 
     private void Edit(UserRow? row)
@@ -194,60 +196,9 @@ public sealed class UserMgmtPanel : UserControl, IPageLifecycle
         }
     }
 
-    private enum LinkedUserAction { Cancel, DisableOnly, UnlinkAndDelete }
-
-    private LinkedUserAction AskLinkedUserAction(List<(UserRow Row, int OrderCount)> linked, int freeCount)
-    {
-        var lines = string.Join("\n", linked.Select(x => $"· {x.Row.DisplayName}（{x.Row.Username}）— {x.OrderCount} 条工单"));
-        var extra = freeCount > 0 ? $"\n另有 {freeCount} 个账号无工单。" : "";
-
-        var dlg = new Window
-        {
-            Title = "无法直接删除",
-            Width = 480,
-            Height = 320,
-            Owner = Window.GetWindow(this),
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            ResizeMode = ResizeMode.NoResize
-        };
-        var result = LinkedUserAction.Cancel;
-        var stack = new StackPanel { Margin = new Thickness(20) };
-        stack.Children.Add(new TextBlock
-        {
-            Text = "以下账号仍关联工单，直接删除会失败：",
-            FontWeight = FontWeights.SemiBold,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 8)
-        });
-        stack.Children.Add(new TextBlock
-        {
-            Text = lines + extra,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 12)
-        });
-        stack.Children.Add(new TextBlock
-        {
-            Text = "请选择处理方式：\n• 仅禁用：保留账号与工单，禁止登录\n• 解除关联并删除：工单保留（操作员姓名保留），账号删除",
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 16)
-        });
-
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        var cancel = UiTheme.GhostButton("取消");
-        cancel.Click += (_, _) => { result = LinkedUserAction.Cancel; dlg.Close(); };
-        var disable = UiTheme.GhostButton("仅禁用");
-        disable.Click += (_, _) => { result = LinkedUserAction.DisableOnly; dlg.Close(); };
-        var unlink = UiTheme.DangerButton("解除关联并删除");
-        unlink.Click += (_, _) => { result = LinkedUserAction.UnlinkAndDelete; dlg.Close(); };
-        buttons.Children.Add(cancel);
-        buttons.Children.Add(disable);
-        buttons.Children.Add(unlink);
-        stack.Children.Add(buttons);
-
-        dlg.Content = new ScrollViewer { Content = stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        dlg.ShowDialog();
-        return result;
-    }
+    private static LinkedUserAction AskLinkedUserAction(List<(UserRow Row, int OrderCount)> linked, int freeCount)
+        => LinkedUserActionDialog.Ask(
+            linked.Select(x => $"· {x.Row.DisplayName}（{x.Row.Username}）— {x.OrderCount} 条工单"), freeCount);
 
     private sealed class UserRow
     {

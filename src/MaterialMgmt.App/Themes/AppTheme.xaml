@@ -322,9 +322,14 @@
                         <Border x:Name="Box" Width="18" Height="18" CornerRadius="4"
                                 BorderThickness="1.5" BorderBrush="{StaticResource BorderStrongBrush}"
                                 Background="White" VerticalAlignment="Center">
-                            <Path x:Name="Tick" Data="M3,8.5 L7,12.5 L14,4.5" Stroke="White" StrokeThickness="2"
-                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                                  Visibility="Collapsed"/>
+                            <Grid>
+                                <Path x:Name="Tick" Data="M3,8.5 L7,12.5 L14,4.5" Stroke="White" StrokeThickness="2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Visibility="Collapsed"/>
+                                <Path x:Name="Dash" Data="M4,7.5 L11,7.5" Stroke="White" StrokeThickness="2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Visibility="Collapsed"/>
+                            </Grid>
                         </Border>
                         <ContentPresenter x:Name="Content" Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"
                                           RecognizesAccessKey="True"/>
@@ -340,6 +345,11 @@
                             <Setter TargetName="Box" Property="Background" Value="{StaticResource PrimaryBrush}"/>
                             <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
                             <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="{x:Null}">
+                            <Setter TargetName="Box" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                            <Setter TargetName="Dash" Property="Visibility" Value="Visible"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Root" Property="Opacity" Value="0.45"/>
