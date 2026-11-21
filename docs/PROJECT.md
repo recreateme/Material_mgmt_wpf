@@ -64,7 +64,7 @@ Material_Mgmt_wpf/
 | `HomePanel` | 首页 | 全部 | 设备状态概览、快捷入口（业务人员可开称量窗）；系统管理员另有“数据安全”：最近备份时间、立即备份、重复有效记录修复 |
 | `MaterialsPanel` | 原材料 | business | 材料 CRUD（`MaterialEditDialog`）、批量删除 |
 | `FormulasPanel` | 配方管理 | business | 配方列表、新建 / 复制配方（`FormulaCreateDialog` / `FormulaCopyDialog`）、多选启用/停用 |
-| `FormulaEditorPanel` | 编辑步骤 | business | 步骤弹窗 `FormulaStepDialog`（实时范围校验、保存并继续添加）、扫码选料、上移/下移即时保存；配方有进行中工单时锁定全部步骤操作；有称重记录的步骤不可删 |
+| `FormulaEditorPanel` | 编辑步骤 | business | 步骤弹窗 `FormulaStepDialog`（实时范围校验、保存并继续添加）、扫码选料、拖拽或上移/下移即时保存；配方有进行中工单时锁定全部步骤操作；有称重记录的步骤不可删 |
 | `AdminHistoryPanel` | 工单历史 | business | 全量历史、状态/日期/配方筛选、详情 `WorkOrderDetailDialog`（含作废记录与作废原因、扫码来源、异常说明）、导出；进行中不可删 |
 | `UserMgmtPanel` | 用户管理 | system_admin | 业务人员账号 CRUD / 重置密码；删除有关联工单的账号时 `LinkedUserActionDialog` 选择仅禁用或解除关联后删除 |
 | `SettingsPanel` | 系统设置 | 全部 | 秤/扫码 COM、模式、自检、改密 |
@@ -88,6 +88,7 @@ Material_Mgmt_wpf/
 | 分页条 | `App/Controls/PaginationBar.cs` + `Core/Lists/Paging.cs` | 每页 10/20/50 条（按页面记入 `[ui] page_size_*`）、页码跳转 |
 | 空状态 | `App/Controls/EmptyState.cs` | 无数据时的提示与主操作；筛选无结果时给「清除筛选」 |
 | 工单筛选 | `App/Controls/WorkOrderFilterInputs.cs` + `Core/Orders/WorkOrderFilter.cs` | 状态 / 开始日期区间 / 配方 + 关键字 |
+| 行拖拽排序 | `App/Controls/RowDragReorder.cs` + `FormulaSequence.MoveTo` | 只从手柄列开始拖，显示插入线、边缘自动滚动；配方编辑页使用 |
 | 表格勾选 | `App/Controls/SelectableRow.cs`（`GridKit`） | 行复选框与选中行联动；表头三态复选框全选当前页；空格切换当前行 |
 | 弹窗基类 | `App/Views/Dialogs/DialogWindow.cs` | 所有弹窗统一：Owner、Enter 确认 / Esc 取消、字段内联错误、可调大小 |
 | 步骤范围校验 | `Core/Formulas/StepRange.cs` | 上下限解析与校验（单测覆盖） |

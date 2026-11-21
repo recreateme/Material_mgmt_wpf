@@ -16,4 +16,19 @@ public static class FormulaSequence
             result.Add((orderedIds[i], i + 1));
         return result;
     }
+
+    /// <summary>
+    /// 把 <paramref name="fromIndex"/> 处的项移到间隙 <paramref name="gapIndex"/>（0 = 最前，Count = 最后）。
+    /// 间隙按移动前的列表计算，越界自动修正。
+    /// </summary>
+    public static List<int> MoveTo(IReadOnlyList<int> orderedIds, int fromIndex, int gapIndex)
+    {
+        var result = orderedIds.ToList();
+        if (fromIndex < 0 || fromIndex >= result.Count) return result;
+        gapIndex = Math.Clamp(gapIndex, 0, result.Count);
+        var id = result[fromIndex];
+        result.RemoveAt(fromIndex);
+        result.Insert(gapIndex > fromIndex ? gapIndex - 1 : gapIndex, id);
+        return result;
+    }
 }

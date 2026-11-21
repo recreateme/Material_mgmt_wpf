@@ -53,6 +53,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         Margin = new Thickness(4, 0, 0, 0)
     };
     private readonly EmptyState _empty;
+    private readonly DataGridTemplateColumn _dragColumn = RowDragReorder.HandleColumn();
     private bool _locked;
     private int _formulaId;
     private string _formulaCode = "";
@@ -133,7 +134,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         {
             Text = "请添加称量步骤并设置大于 0 的上下限（单位 g），可扫码选料。" +
                    "选中某一步后再点「添加步骤」会插入到该步之后；未选中则追加到末尾。" +
-                   "上移 / 下移后顺序立即保存。步骤较多时可滚动浏览（不分页）。",
+                   "按住行首 ⋮⋮ 拖动或用上移 / 下移调整顺序，松手即保存。步骤较多时可滚动浏览（不分页）。",
             Foreground = UiTheme.Brush(UiTheme.Muted),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 8, 0, 0)
@@ -146,6 +147,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         _grid.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
         GridKit.BindSingleActions(_grid, up, down);
         _grid.Columns.Add(GridKit.CheckColumn());
+        _grid.Columns.Add(_dragColumn);
         _grid.Columns.Add(GridKit.Text("序号", "Item.Sequence", 60));
         _grid.Columns.Add(GridKit.Text("材料编码", "Item.Material.Code", 140, align: TextAlignment.Left));
         _grid.Columns.Add(GridKit.Text("材料名称", "Item.Material.Name", 160, align: TextAlignment.Left));
@@ -156,6 +158,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         {
             if (!_locked && CurrentStep() is { } it) EditStep(it);
         };
+        RowDragReorder.Attach(_grid, () => !_locked, DropStep);
 
         root.Children.Add(header);
         root.Children.Add(EmptyState.Host(_grid, _empty));
@@ -199,6 +202,7 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         var active = _orders.ActiveOrdersForFormula(_formulaId);
         _locked = active.Count > 0;
         _stepActions.IsEnabled = !_locked;
+        _dragColumn.Visibility = _locked ? Visibility.Collapsed : Visibility.Visible;
         if (_locked)
         {
             var reason = OrderService.DescribeActiveOrders(active) + "，完成或取消后才能修改步骤。";
@@ -337,7 +341,6 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         }
     }
 
-    /// <summary>上移 / 下移后立即写库，不再需要“保存顺序”。</summary>
     private void Move(int dir)
     {
         if (_locked) return;
@@ -349,10 +352,25 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         var idx = _items.FindIndex(x => x.Id == it.Id);
         var target = idx + dir;
         if (target < 0 || target >= _items.Count) return;
-        if (!EnsureEditable()) return;
 
         var ids = _items.Select(x => x.Id).ToList();
         (ids[idx], ids[target]) = (ids[target], ids[idx]);
+        SaveOrder(ids, it.Id);
+    }
+
+    private void DropStep(object rowObj, int gapIndex)
+    {
+        if (_locked || rowObj is not SelectableRow<FormulaItem> row) return;
+        var ids = _items.Select(x => x.Id).ToList();
+        var reordered = FormulaSequence.MoveTo(ids, ids.IndexOf(row.Item.Id), gapIndex);
+        if (reordered.SequenceEqual(ids)) return;
+        SaveOrder(reordered, row.Item.Id);
+    }
+
+    /// <summary>调整顺序后立即写库，不需要单独“保存顺序”。</summary>
+    private void SaveOrder(IReadOnlyList<int> ids, int focusId)
+    {
+        if (!EnsureEditable()) return;
         try
         {
             using var db = _dbFactory.CreateDbContext();
@@ -361,10 +379,10 @@ public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHa
         catch (Exception ex)
         {
             UiFeedback.Warn($"调整顺序失败：{ex.GetBaseException().Message}");
-            Reload(it.Id);
+            Reload(focusId);
             return;
         }
-        Reload(it.Id);
+        Reload(focusId);
         _orderStatus.Text = $"✓ 顺序已保存 {DateTime.Now:HH:mm:ss}";
     }
 
