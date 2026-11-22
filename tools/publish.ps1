@@ -131,6 +131,8 @@ $docs = @(
     @{ Src = "DEPLOY.md"; Dst = "docs\DEPLOY.md" },
     @{ Src = "README.md"; Dst = "docs\README.md" },
     @{ Src = "CHANGELOG.md"; Dst = "docs\CHANGELOG.md" },
+    @{ Src = "docs\使用说明书.md"; Dst = "docs\使用说明书.md" },
+    @{ Src = "docs\技术说明书.md"; Dst = "docs\技术说明书.md" },
     @{ Src = "docs\quickstart.md"; Dst = "docs\quickstart.md" },
     @{ Src = "docs\wpf-tutorial.md"; Dst = "docs\wpf-tutorial.md" },
     @{ Src = "docs\hardware-checklist.md"; Dst = "docs\hardware-checklist.md" },

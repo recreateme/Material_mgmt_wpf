@@ -16,6 +16,8 @@
 
 | 文档 | 说明 |
 |------|------|
+| [docs/使用说明书.md](docs/使用说明书.md) | **现场操作**：两种角色的菜单、称量、配方、导出 |
+| [docs/技术说明书.md](docs/技术说明书.md) | **维护与二次开发**：分层、三条调用链、设备、迁移；面向熟悉 OT、刚读本仓库的人 |
 | [docs/quickstart.md](docs/quickstart.md) | **5 分钟上手**：运行、登录、主要操作 |
 | [docs/PROJECT.md](docs/PROJECT.md) | **项目结构**：目录、模块、面板与功能对照 |
 | [docs/TECH.md](docs/TECH.md) | **技术说明**：串口双 COM、WPF 架构、状态机 |

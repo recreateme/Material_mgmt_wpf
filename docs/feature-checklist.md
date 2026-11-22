@@ -74,5 +74,5 @@
 - [x] 所有弹窗统一走 DialogWindow（Enter 确认 / Esc 取消 / 内联错误）
 - [x] 反馈分级：成功与前置提示用非模态提示条，警告 / 错误用主题弹窗（MessageDialog），破坏性操作用 ConfirmDialog；业务界面无系统消息框
 - [x] UI 主题（AppTheme + UiTheme 按钮工厂 / DialogBody）
-- [x] 文档：README / Quickstart / PROJECT / TECH / WPF 教程
+- [x] 文档：README / 使用说明书 / 技术说明书 / Quickstart / PROJECT / TECH / WPF 教程
 - [ ] 现场硬件联调签字 → 见 [hardware-checklist.md](hardware-checklist.md)
