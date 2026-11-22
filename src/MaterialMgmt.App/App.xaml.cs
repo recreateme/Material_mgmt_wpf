@@ -13,6 +13,10 @@ using MaterialMgmt.Infrastructure.Data;
 
 namespace MaterialMgmt.App;
 
+/// <summary>
+/// 程序入口。先定位根目录和日志，再注册服务、初始化数据库，然后显示登录窗。
+/// 登录成功前关闭方式是显式退出，避免登录框一关进程就结束。
+/// </summary>
 public partial class App : Application
 {
     private ServiceProvider? _services;

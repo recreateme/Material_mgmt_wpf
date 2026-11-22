@@ -11,6 +11,7 @@ using MaterialMgmt.Infrastructure.Services;
 
 namespace MaterialMgmt.App.Views.Panels;
 
+/// <summary>开始称量：选配方或扫 FML- 码，填写工艺参数后调用 OrderService.Create。</summary>
 public sealed class SessionSelectPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
     private readonly FormulaService _formulaService;

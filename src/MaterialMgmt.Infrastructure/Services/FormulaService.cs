@@ -30,6 +30,7 @@ public sealed class FormulaService
         return q.ToList();
     }
 
+    /// <summary>新建配方时展示的下一个编码。真正占用编码发生在保存时。</summary>
     public string PreviewNextCode()
     {
         using var db = _factory.CreateDbContext();
@@ -179,6 +180,7 @@ public sealed class FormulaService
         return entity.Id;
     }
 
+    /// <summary>修改一步的原料和上下限。配方若有进行中工单则拒绝。</summary>
     public void UpdateStep(int itemId, StepInput input)
     {
         using var db = _factory.CreateDbContext();

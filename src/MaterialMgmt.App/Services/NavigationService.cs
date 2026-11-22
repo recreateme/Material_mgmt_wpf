@@ -4,6 +4,7 @@ using MaterialMgmt.Core.Auth;
 
 namespace MaterialMgmt.App.Services;
 
+/// <summary>页面身份。侧栏和称量窗都用这个枚举，不使用 URL。</summary>
 public enum AppPage
 {
     Home = 0,
@@ -18,6 +19,10 @@ public enum AppPage
     Settings = 9
 }
 
+/// <summary>
+/// 把 <see cref="AppPage"/> 显示到一个 ContentControl 里，并按角色拒绝无权页面。
+/// 面板第一次打开时创建，之后放在缓存里，直到退出登录 ClearCache。
+/// </summary>
 public sealed class NavigationService
 {
     private readonly Dictionary<AppPage, Func<UserControl>> _factories = new();

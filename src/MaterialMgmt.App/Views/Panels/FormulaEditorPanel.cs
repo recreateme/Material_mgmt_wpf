@@ -11,6 +11,7 @@ using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
+/// <summary>配方步骤编辑。拖拽或上移下移后调用 FormulaService.Reorder。有进行中工单时服务会拒绝写入。</summary>
 public sealed class FormulaEditorPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
     private readonly FormulaService _formulas;

@@ -9,6 +9,7 @@ namespace MaterialMgmt.Core.Workflow;
 public sealed class WorkflowEngine
 {
     private readonly List<FormulaItem> _items;
+    /// <summary>绝对克重不超过这个值视为空秤，不进入合格或超范围判定。</summary>
     private const double ZeroWeightEpsilon = 0.005;
     private string _scannedCode = "";
     private double _lastWeight;
@@ -23,6 +24,7 @@ public sealed class WorkflowEngine
     }
 
     public int WorkOrderId { get; }
+    /// <summary>当前步骤在已按序号排好的列表中的下标，从 0 开始。完成的步数等于这个值。</summary>
     public int StepIndex { get; private set; }
     public WeighState State { get; private set; }
     public IReadOnlyList<FormulaItem> Items => _items;

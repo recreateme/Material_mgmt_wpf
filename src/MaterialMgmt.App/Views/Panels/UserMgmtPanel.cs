@@ -11,6 +11,7 @@ using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
+/// <summary>系统管理员维护业务人员账号。有工单的账号删除前要选择仅禁用或解除关联。</summary>
 public sealed class UserMgmtPanel : UserControl, IPageLifecycle
 {
     private readonly UserService _users;

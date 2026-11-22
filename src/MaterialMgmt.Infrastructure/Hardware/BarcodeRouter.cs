@@ -38,9 +38,10 @@ public sealed class BarcodeRouter
     /// <summary>接收一条码；被过滤时返回 false。</summary>
     public bool Publish(string? code, string source)
     {
+        // 串口已经在收这把枪时，键盘楔入的同一条码不要再进一次。
         if (source == ScanSources.Hid && SerialPathActive) return false;
         var normalized = Normalize(code);
-        if (normalized.Length < MinLength) return false;
+        if (normalized.Length < MinLength) return false; // 短于 4 位的当噪声丢掉
 
         LastCode = normalized;
         LastSource = source;

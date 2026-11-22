@@ -14,6 +14,7 @@ using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
+/// <summary>工单历史。查看全部工单、详情与异常说明、导出。删除走 OrderService 的软删除。</summary>
 public sealed class AdminHistoryPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
     private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;

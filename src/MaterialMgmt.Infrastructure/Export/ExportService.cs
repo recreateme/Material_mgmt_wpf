@@ -7,6 +7,10 @@ using MaterialMgmt.Infrastructure.Data;
 
 namespace MaterialMgmt.Infrastructure.Export;
 
+/// <summary>
+/// 导出工单为 xlsx。每个工单一个工作表，只写有效记录；原料名和上下限优先用快照。
+/// 文件被占用时抛出的异常由界面说明给操作员。
+/// </summary>
 public sealed class ExportService
 {
     private static readonly Regex SafeName = new(@"[\\/:*?""<>|\s]+", RegexOptions.Compiled);
@@ -18,6 +22,7 @@ public sealed class ExportService
         _factory = factory;
     }
 
+    /// <summary>导出一张工单。返回实际写入的路径。</summary>
     public string ExportWorkOrder(int workOrderId, string savePath)
     {
         using var db = _factory.CreateDbContext();
@@ -29,6 +34,7 @@ public sealed class ExportService
         return Save(wb, savePath);
     }
 
+    /// <summary>批量导出。已软删除的工单跳过；一张都没有时抛异常。</summary>
     public string ExportWorkOrders(IEnumerable<int> ids, string savePath)
     {
         var list = ids.ToList();

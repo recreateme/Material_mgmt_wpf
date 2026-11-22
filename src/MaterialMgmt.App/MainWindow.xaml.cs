@@ -11,6 +11,11 @@ using MaterialMgmt.Core.Auth;
 
 namespace MaterialMgmt.App;
 
+/// <summary>
+/// 登录后的主壳：左侧导航、中间页面、底部设备状态栏。
+/// 业务人员的「开始称量」「我的工单」不切换本窗口的页，而是打开称量窗。
+/// 扫码交给谁，由这里注入给 DeviceHub 的两个回调决定。
+/// </summary>
 public partial class MainWindow : Window
 {
     private readonly IAuthService _auth;

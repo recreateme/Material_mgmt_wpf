@@ -9,6 +9,7 @@ using MaterialMgmt.Infrastructure.Hardware;
 
 namespace MaterialMgmt.App.Views.Panels;
 
+/// <summary>秤和扫码枪的端口、模式、硬件自检、提示音。模拟扫码按钮只对系统管理员显示。</summary>
 public sealed class SettingsPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
     private readonly IConfigService _config;

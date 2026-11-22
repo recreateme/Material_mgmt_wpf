@@ -5,6 +5,7 @@ using MaterialMgmt.Core.Auth;
 
 namespace MaterialMgmt.App.Views.Dialogs;
 
+/// <summary>当前用户自己改密码。新密码走 PasswordPolicy，并要求与原密码不同。</summary>
 public sealed class ChangePasswordDialog : DialogWindow
 {
     private readonly IAuthService _auth;

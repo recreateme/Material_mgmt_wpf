@@ -21,12 +21,14 @@ public sealed class UserService
         _auth = auth;
     }
 
+    /// <summary>全部业务人员账号，含已禁用的。不含系统管理员。</summary>
     public List<User> BusinessUsers()
     {
         using var db = _factory.CreateDbContext();
         return db.Users.AsNoTracking().Where(u => u.Role == Roles.Business).OrderBy(u => u.Id).ToList();
     }
 
+    /// <summary>用户名是否已被占用。比较前会去掉首尾空格。</summary>
     public bool UsernameExists(string username)
     {
         var name = username.Trim();
@@ -34,6 +36,7 @@ public sealed class UserService
         return db.Users.Any(u => u.Username == name);
     }
 
+    /// <summary>新建业务人员。密码先过 <see cref="PasswordPolicy"/>，只存哈希。</summary>
     public User CreateBusiness(string username, string? displayName, string password)
     {
         var name = username.Trim();
@@ -56,6 +59,7 @@ public sealed class UserService
         return user;
     }
 
+    /// <summary>只改显示名，不改用户名和密码。</summary>
     public User UpdateDisplayName(int userId, string displayName)
     {
         using var db = _factory.CreateDbContext();
@@ -66,6 +70,7 @@ public sealed class UserService
         return u;
     }
 
+    /// <summary>管理员重置密码。新密码同样要满足 <see cref="PasswordPolicy"/>。</summary>
     public void ResetPassword(int userId, string password)
     {
         using var db = _factory.CreateDbContext();

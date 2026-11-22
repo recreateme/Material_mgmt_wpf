@@ -5,6 +5,10 @@ using MaterialMgmt.Infrastructure.Data;
 
 namespace MaterialMgmt.Infrastructure.Services;
 
+/// <summary>
+/// 工单的读写。开工、确认称重、完成、取消、软删除、详情和异常说明都从这里进数据库。
+/// 称量页确认时必须先 <see cref="SavePendingWeight"/> 成功，再让状态机前进。
+/// </summary>
 public sealed class OrderService
 {
     private readonly IDbContextFactory<MaterialMgmtDbContext> _factory;
@@ -47,6 +51,7 @@ public sealed class OrderService
         return wo.Id;
     }
 
+    /// <summary>配方是否至少有一步。没有步骤时不允许开工单。</summary>
     public bool FormulaHasSteps(int formulaId)
     {
         using var db = _factory.CreateDbContext();
@@ -76,6 +81,7 @@ public sealed class OrderService
         db.SaveChanges();
     }
 
+    /// <summary>取消进行中的工单。已完成的工单会抛异常，见 <see cref="OrderRules.Cancel"/>。</summary>
     public void Cancel(int workOrderId)
     {
         using var db = _factory.CreateDbContext();
@@ -112,6 +118,10 @@ public sealed class OrderService
         return orders.Count;
     }
 
+    /// <summary>
+    /// 把状态机给出的待确认记录写成一条有效称重，并抄下当时的上下限和原料名。
+    /// 调用方应在本方法成功返回后再 <c>CommitConfirm</c>。
+    /// </summary>
     public WeightRecord SavePendingWeight(
         int workOrderId, int formulaItemId, string barcode, double weight, DateTime timestamp,
         string? scanSource = null)
@@ -138,6 +148,7 @@ public sealed class OrderService
         return record;
     }
 
+    /// <summary>这一步是否已有有效记录。有则不能再确认，必须先回称作废。</summary>
     public bool HasValidRecord(int workOrderId, int formulaItemId)
     {
         using var db = _factory.CreateDbContext();
@@ -248,6 +259,7 @@ public sealed class OrderService
         return n;
     }
 
+    /// <summary>本工单上仍有效的步骤 Id，供恢复进度和跳过已称步骤使用。</summary>
     public HashSet<int> GetValidFormulaItemIds(int workOrderId)
     {
         using var db = _factory.CreateDbContext();
@@ -311,6 +323,7 @@ public sealed class OrderService
             .ToList();
     }
 
+    /// <summary>最后一步确认之后调用：状态改为已完成，并写下结束时间。</summary>
     public void CompleteWorkOrder(int workOrderId)
     {
         using var db = _factory.CreateDbContext();

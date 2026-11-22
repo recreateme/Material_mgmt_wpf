@@ -10,6 +10,7 @@ using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
+/// <summary>配方列表：新建、复制、启停、删除。有工单的配方不能删。</summary>
 public sealed class FormulasPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
     private readonly IAuthService _auth;

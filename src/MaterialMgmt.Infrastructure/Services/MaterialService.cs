@@ -18,6 +18,7 @@ public sealed class MaterialService
         _factory = factory;
     }
 
+    /// <summary>全部原料，按编码排序。列表页拿到后在内存里搜索，不再次查库。</summary>
     public List<Material> All()
     {
         using var db = _factory.CreateDbContext();

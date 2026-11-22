@@ -10,6 +10,7 @@ using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
+/// <summary>原料列表。增删改都调用 MaterialService；被配方引用的原料删不掉。</summary>
 public sealed class MaterialsPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
     private readonly MaterialService _materials;

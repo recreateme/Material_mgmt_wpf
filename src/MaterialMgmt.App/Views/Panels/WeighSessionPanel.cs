@@ -20,6 +20,10 @@ using MaterialMgmt.App.Views.Dialogs;
 
 namespace MaterialMgmt.App.Views.Panels;
 
+/// <summary>
+/// 称量中。扫码和克重交给 WorkflowEngine；只有 PrepareConfirm 通过且 SavePendingWeight 成功才 CommitConfirm。
+/// 本页拒绝模拟扫码。
+/// </summary>
 public sealed class WeighSessionPanel : UserControl, IPageLifecycle, IBarcodeHandler
 {
     private readonly IDbContextFactory<MaterialMgmtDbContext> _dbFactory;

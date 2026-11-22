@@ -6,7 +6,9 @@ namespace MaterialMgmt.Infrastructure.Hardware;
 /// <summary>电子天平串口轮询（对齐 Python ScaleWorker Modbus-RTU）。</summary>
 public sealed class ScaleWorker : IDisposable
 {
+    /// <summary>功能码 03，从寄存器 0 读 4 个寄存器。末两字节是 CRC。现场协议不同时改这里。</summary>
     private static readonly byte[] ReadCmd = { 0x01, 0x03, 0x00, 0x00, 0x00, 0x04, 0x44, 0x09 };
+    /// <summary>功能码 06，把寄存器 4 写成 1，用于置零。</summary>
     private static readonly byte[] ZeroCmd = { 0x01, 0x06, 0x00, 0x04, 0x00, 0x01, 0x09, 0xCB };
 
     private readonly ILogger<ScaleWorker>? _logger;

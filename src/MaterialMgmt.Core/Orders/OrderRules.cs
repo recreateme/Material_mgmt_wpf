@@ -2,6 +2,10 @@ using MaterialMgmt.Core.Entities;
 
 namespace MaterialMgmt.Core.Orders;
 
+/// <summary>
+/// 工单状态文字和两条硬规则：已完成不能取消；进行中必须先取消才能删除。
+/// 改状态字段由调用方保存，本类不访问数据库。
+/// </summary>
 public static class OrderRules
 {
     public const string InProgress = "in_progress";
